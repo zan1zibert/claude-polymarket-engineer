@@ -1,0 +1,5 @@
+anthropic
+requests
+pandas
+python-dotenv
+rich

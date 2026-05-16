@@ -1,0 +1,12 @@
+Current Polymarket market:
+
+Question: {question}
+Description: {description}
+End date: {end_date}
+
+Analyze this market step by step and output **only** valid JSON:
+
+{
+  "probability": 0.XX,
+  "confidence": "HIGH|MEDIUM|LOW"
+}
