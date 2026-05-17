@@ -8,7 +8,7 @@ import requests
 GAMMA_MARKETS_URL = "https://gamma-api.polymarket.com/markets"
 
 
-def fetch_markets(limit: int, end_date_max: str) -> List[Dict]:
+def fetch_markets(limit: int, end_date_max: str, end_date_min: str) -> List[Dict]:
     """Raw Gamma API call. Returns markets ordered by 24h volume desc."""
     params = {
         "active": "true",
@@ -17,6 +17,7 @@ def fetch_markets(limit: int, end_date_max: str) -> List[Dict]:
         "limit": limit,
         "order": "volume24hr",
         "ascending": "false",
+        "end_date_min": end_date_min,
         "end_date_max": end_date_max,
     }
     response = requests.get(GAMMA_MARKETS_URL, params=params, timeout=30)
@@ -91,8 +92,10 @@ def get_active_markets(
     end_date_max = (
         datetime.now(timezone.utc) + timedelta(hours=hours_until_resolution)
     ).isoformat()
+    
+    end_date_min = datetime.now(timezone.utc).isoformat()
 
-    raw = fetch_markets(limit=limit, end_date_max=end_date_max)
+    raw = fetch_markets(limit=limit, end_date_max=end_date_max, end_date_min=end_date_min)
     normalized = [n for n in (_normalize(m) for m in raw) if n is not None]
     filtered = filter_markets(
         normalized,
