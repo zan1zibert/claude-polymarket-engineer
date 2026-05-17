@@ -10,10 +10,10 @@ client = Anthropic()
 def analyze_market(market: dict, context: str = "") -> dict:
     """Send market to Claude and get structured analysis"""
     
-    with open("part-1/prompts/system_prompt.txt") as f:
+    with open("prompts/system_prompt.txt") as f:
         system = f.read()
     
-    with open("part-1/prompts/analysis_prompt.txt") as f:
+    with open("prompts/analysis_prompt.txt") as f:
         template = f.read()
     
     user_prompt = template.format(
