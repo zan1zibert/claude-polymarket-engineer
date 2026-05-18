@@ -2,7 +2,6 @@ Current Polymarket market:
 
 Question: {question}
 Description: {description}
-Current_yes_price: {yes_price}
 End date: {end_date}
 
 Analyze this market step by step and output **only** valid JSON:

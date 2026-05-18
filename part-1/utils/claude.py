@@ -10,7 +10,7 @@ client = Anthropic()
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 MODEL = "claude-sonnet-4-6"
-WEB_SEARCH_MAX_USES = 5
+WEB_SEARCH_MAX_USES = 1
 
 WEB_SEARCH_TOOL = {
     "type": "web_search_20260209",
@@ -48,7 +48,6 @@ def analyze_market(market: dict, use_web_search: bool = True) -> dict:
     user_prompt = template.format(
         question=market["question"],
         description=market["description"],
-        yes_price=market["yes_price"],
         end_date=market.get("end_date", "Unknown"),
     )
 
