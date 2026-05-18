@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,7 +12,8 @@ from utils.polymarket import get_active_markets
 console = Console()
 
 OUTPUTS_DIR = Path(__file__).resolve().parent / "outputs"
-SAMPLE_SIZE = 30
+SAMPLE_SIZE = 40
+PAUSE_BETWEEN_MARKETS = 30  # seconds — stays well under 30k TPM rate limit
 
 
 console.print("[bold green]Claude vs Polymarket - Part 1[/bold green]")
@@ -24,7 +26,7 @@ results_jsonl_path = OUTPUTS_DIR / f"results_{timestamp}.jsonl"
 results_csv_path = OUTPUTS_DIR / f"results_{timestamp}.csv"
 
 markets = get_active_markets(
-    limit=100,
+    limit=150,
     hours_until_resolution=168,
     save_to=str(snapshot_path),
 )
@@ -41,23 +43,29 @@ with open(results_jsonl_path, "w") as jsonl_file:
 
         if "error" in analysis:
             console.print("  [yellow]parse error, skipped[/yellow]")
-            continue
+        else:
+            confidence = analysis.get("confidence", "MEDIUM")
+            if confidence != "LOW":
+                row = {
+                    "id": market["id"],
+                    "question": market["question"][:120],
+                    "market_prob": market["yes_price"],
+                    "claude_prob": round(float(analysis.get("probability", 0)), 4),
+                    "confidence": confidence,
+                    "web_searches": analysis.get("web_searches", 0),
+                    "reasoning": analysis.get("reasoning", ""),
+                    "end_date": market["end_date"],
+                }
+                results.append(row)
+                jsonl_file.write(json.dumps(row) + "\n")
+                jsonl_file.flush()
+                console.print(f"  [green]saved[/green] ({len(results)} so far)")
+            else:
+                console.print("  [yellow]low confidence, skipped[/yellow]")
 
-        confidence = analysis.get("confidence", "MEDIUM")
-        if confidence != "LOW":
-            row = {
-                "id": market["id"],
-                "question": market["question"][:120],
-                "market_prob": market["yes_price"],
-                "claude_prob": round(float(analysis.get("probability", 0)), 4),
-                "confidence": confidence,
-                "web_searches": analysis.get("web_searches", 0),
-                "end_date": market["end_date"],
-            }
-            results.append(row)
-            jsonl_file.write(json.dumps(row) + "\n")
-            jsonl_file.flush()
-            console.print(f"  [dim]saved ({len(results)} so far)[/dim]")
+        if i < len(sample):
+            console.print(f"  [dim]waiting {PAUSE_BETWEEN_MARKETS}s...[/dim]")
+            time.sleep(PAUSE_BETWEEN_MARKETS)
 
 df = pd.DataFrame(results)
 df["edge"] = (df["claude_prob"] - df["market_prob"]).round(4)
@@ -69,6 +77,6 @@ console.print(
 )
 
 df.to_csv(results_csv_path, index=False)
-console.print(f"\nResults (CSV)  → {results_csv_path}")
+console.print(f"\nResults (CSV)   → {results_csv_path}")
 console.print(f"Results (JSONL) → {results_jsonl_path}")
 console.print(f"Market snapshot → {snapshot_path}")

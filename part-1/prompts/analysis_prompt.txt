@@ -8,3 +8,4 @@ Analyze this market step by step and output **only** valid JSON:
 
 "probability": 0.XX,
 "confidence": "HIGH|MEDIUM|LOW"
+"reasoning": one or two sentences 
