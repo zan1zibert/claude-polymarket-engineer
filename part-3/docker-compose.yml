@@ -1,0 +1,62 @@
+# Local development stack for Part 3.
+# Currently: Redis + the news feeder. Worker / signal / postgres land here as
+# we build them (commented stubs below show where).
+#
+#   docker compose up --build        # start redis + feeder
+#   docker compose logs -f feeder    # watch articles flow
+#   docker compose down              # stop (add -v to also wipe redis data)
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    ports:
+      # localhost only — never expose Redis to the network (no auth by default)
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  feeder:
+    build:
+      context: .
+      target: feeder
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      POLL_INTERVAL_SECONDS: "60"
+      FRESHNESS_WINDOW_MINUTES: "30"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    # SINGLETON — more than one poller = duplicate fetches. Do not scale.
+    deploy:
+      replicas: 1
+
+  # --- added later ---
+  # worker:        # SCALABLE: docker compose up --scale worker=3
+  #   build: { context: ., target: worker }
+  #   environment:
+  #     REDIS_URL: redis://redis:6379/0
+  #     DATABASE_URL: postgresql://pm:pm@postgres:5432/pm
+  #     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  #     VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+  #   depends_on: [redis, postgres]
+  #
+  # signal:        # SINGLETON: mutates positions, do not scale
+  #   build: { context: ., target: signal }
+  #   deploy: { replicas: 1 }
+  #
+  # postgres:      # relational + pgvector (vector search) in one
+  #   image: pgvector/pgvector:pg16
+  #   environment: { POSTGRES_USER: pm, POSTGRES_PASSWORD: pm, POSTGRES_DB: pm }
+  #   ports: ["127.0.0.1:5432:5432"]
+  #   volumes: [pg_data:/var/lib/postgresql/data]
+
+volumes:
+  redis_data:
+  # pg_data:

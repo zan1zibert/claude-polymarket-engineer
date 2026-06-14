@@ -1,0 +1,31 @@
+Breaking news article:
+
+Title: {title}
+Source: {source}
+Published: {published_at}
+Summary: {description}
+
+Potentially affected Polymarket markets:
+
+{markets}
+
+For each market above, decide:
+1. Is this news materially relevant to this market?
+2. If yes, what is your updated probability estimate?
+3. What is the direction and magnitude of the shift?
+
+Output ONLY valid JSON in this exact format:
+
+{{
+  "updates": [
+    {{
+      "market_id": "...",
+      "relevant": true,
+      "previous_price": 0.XX,
+      "updated_probability": 0.XX,
+      "shift": 0.XX,
+      "reasoning": "one sentence"
+    }}
+  ],
+  "irrelevant_market_ids": ["...", "..."]
+}}

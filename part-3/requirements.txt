@@ -1,0 +1,6 @@
+# Feeder dependencies. Grows as we add the worker/signal/ingest services
+# (anthropic, voyageai, psycopg, pgvector, ...).
+httpx
+feedparser
+redis
+python-dotenv
