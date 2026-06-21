@@ -1,6 +1,11 @@
-# Feeder dependencies. Grows as we add the worker/signal/ingest services
-# (anthropic, voyageai, psycopg, pgvector, ...).
+# Shared dependencies across the part-3 services.
+# feeder:  httpx, feedparser, redis
+# worker:  + anthropic, voyageai, psycopg, pgvector
 httpx
 feedparser
 redis
 python-dotenv
+anthropic
+voyageai
+psycopg[binary]
+pgvector

@@ -37,26 +37,49 @@ services:
     deploy:
       replicas: 1
 
+  postgres:      # relational state + pgvector (vector search) in one
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: pm
+      POSTGRES_PASSWORD: pm
+      POSTGRES_DB: pm
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      # schema is applied once, on first start of an empty data volume
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pm -d pm"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  worker:        # SCALABLE: docker compose up --scale worker=3
+    build:
+      context: .
+      target: worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://pm:pm@postgres:5432/pm
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      AUDIT_LOG_PATH: /data/belief_updates.jsonl
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - audit_logs:/data
+
   # --- added later ---
-  # worker:        # SCALABLE: docker compose up --scale worker=3
-  #   build: { context: ., target: worker }
-  #   environment:
-  #     REDIS_URL: redis://redis:6379/0
-  #     DATABASE_URL: postgresql://pm:pm@postgres:5432/pm
-  #     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-  #     VOYAGE_API_KEY: ${VOYAGE_API_KEY}
-  #   depends_on: [redis, postgres]
-  #
   # signal:        # SINGLETON: mutates positions, do not scale
   #   build: { context: ., target: signal }
   #   deploy: { replicas: 1 }
-  #
-  # postgres:      # relational + pgvector (vector search) in one
-  #   image: pgvector/pgvector:pg16
-  #   environment: { POSTGRES_USER: pm, POSTGRES_PASSWORD: pm, POSTGRES_DB: pm }
-  #   ports: ["127.0.0.1:5432:5432"]
-  #   volumes: [pg_data:/var/lib/postgresql/data]
 
 volumes:
   redis_data:
-  # pg_data:
+  pg_data:
+  audit_logs:

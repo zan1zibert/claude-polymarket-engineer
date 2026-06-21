@@ -18,4 +18,10 @@ FROM base AS feeder
 COPY services/feeder/ ./services/feeder/
 CMD ["python", "-m", "services.feeder.main"]
 
-# ---- worker / signal stages will be added here as we build them ----
+# ---- worker (scalable: docker compose up --scale worker=N) ----
+FROM base AS worker
+COPY services/worker/ ./services/worker/
+COPY prompts/ ./prompts/
+CMD ["python", "-m", "services.worker.main"]
+
+# ---- signal stage will be added here as we build it ----

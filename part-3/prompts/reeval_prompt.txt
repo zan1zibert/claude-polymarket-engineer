@@ -1,0 +1,21 @@
+Prediction market under review:
+
+Question: {question}
+Description: {description}
+CurrentTime: {current_time}
+
+Your current probability estimate (prior): {current_score}
+
+Breaking news article:
+
+Title: {article_title}
+Summary: {article_summary}
+Source URL: {article_url}
+
+Update your probability for the YES outcome in light of this article. No market
+price is provided — report your own estimate, not the crowd's. Output only valid
+JSON:
+
+"probability": 0.XX,
+"confidence": "HIGH|MEDIUM|LOW",
+"reasoning": one or two sentences

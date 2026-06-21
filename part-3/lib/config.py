@@ -17,6 +17,18 @@ class Settings:
     http_timeout_seconds: float
     user_agent: str
 
+    # --- worker (market analyzer) ---
+    database_url: str
+    belief_queue_key: str        # second Redis list: worker -> signal
+    anthropic_model: str
+    voyage_api_key: str
+    voyage_model: str
+    embedding_dim: int
+    top_k: int                   # candidate markets retrieved per article
+    max_cosine_distance: float   # relevance gate; matches beyond this are dropped
+    audit_log_path: str          # append-only JSONL of every belief update
+    worker_use_web_search: bool  # worker already has the article; off by default
+
 
 def load_settings() -> Settings:
     return Settings(
@@ -31,4 +43,17 @@ def load_settings() -> Settings:
             "USER_AGENT",
             "claude-polymarket-engineer/0.1 (+https://github.com/zan1zibert/claude-polymarket-engineer)",
         ),
+        database_url=os.environ.get(
+            "DATABASE_URL", "postgresql://pm:pm@localhost:5432/pm"
+        ),
+        belief_queue_key=os.environ.get("BELIEF_QUEUE_KEY", "belief_updates"),
+        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+        voyage_api_key=os.environ.get("VOYAGE_API_KEY", ""),
+        voyage_model=os.environ.get("VOYAGE_MODEL", "voyage-3.5"),
+        embedding_dim=int(os.environ.get("EMBEDDING_DIM", "1024")),
+        top_k=int(os.environ.get("TOP_K", "5")),
+        max_cosine_distance=float(os.environ.get("MAX_COSINE_DISTANCE", "0.35")),
+        audit_log_path=os.environ.get("AUDIT_LOG_PATH", "outputs/belief_updates.jsonl"),
+        worker_use_web_search=os.environ.get("WORKER_USE_WEB_SEARCH", "false").lower()
+        in ("1", "true", "yes"),
     )
