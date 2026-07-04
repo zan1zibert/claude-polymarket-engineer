@@ -24,4 +24,9 @@ COPY services/worker/ ./services/worker/
 COPY prompts/ ./prompts/
 CMD ["python", "-m", "services.worker.main"]
 
+# ---- syncer (singleton: market ingestion) ----
+FROM base AS syncer
+COPY services/syncer/ ./services/syncer/
+CMD ["python", "-m", "services.syncer.main"]
+
 # ---- signal stage will be added here as we build it ----

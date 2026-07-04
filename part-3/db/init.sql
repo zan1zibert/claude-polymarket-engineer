@@ -5,8 +5,11 @@
 --   markets        — current market state + its embedding (vector search target)
 --   belief_updates — append-only audit history of every re-evaluation
 --
--- Market ingestion (fetch from Gamma, embed, upsert) is out of scope here; this
--- file only creates the structure. `db/seed_markets.py` inserts dev fixtures.
+-- The `markets` table is kept in sync with Polymarket by the market-syncer
+-- service (services/syncer/), which fetches, embeds, and marks resolved markets
+-- closed (rows are retained for scoring, not deleted). This
+-- file only creates the structure. `db/seed_markets.py` inserts a couple of
+-- fixtures for a quick worker smoke-test without running the syncer.
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -14,11 +17,30 @@ CREATE TABLE IF NOT EXISTS markets (
     id            TEXT PRIMARY KEY,         -- Gamma market id
     question      TEXT NOT NULL,            -- market title/question
     description   TEXT NOT NULL DEFAULT '',
-    end_date      TIMESTAMPTZ,
-    current_score DOUBLE PRECISION,         -- our belief, 0..1 (NULL until first eval)
+    end_date      TIMESTAMPTZ,              -- date_of_resolution (Gamma endDate)
+    current_score DOUBLE PRECISION,         -- our belief, 0..1; seeded by the
+                                            -- syncer with the Polymarket yes-price,
+                                            -- then overwritten by the worker
+    slug          TEXT,                     -- Polymarket slug (human-readable id)
+    volume_24h    DOUBLE PRECISION,         -- rolling 24h volume (refreshed on sync)
+    liquidity     DOUBLE PRECISION,         -- order-book liquidity (refreshed on sync)
+    closed        BOOLEAN NOT NULL DEFAULT FALSE,  -- resolved on Polymarket; kept for
+                                            -- scoring but excluded from retrieval
+    resolved_at   TIMESTAMPTZ,              -- when the syncer marked it closed
     embedding     VECTOR(1024) NOT NULL,    -- voyage-3.5 @ 1024 dims
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Forward-compat for databases created before these columns existed
+-- (CREATE TABLE IF NOT EXISTS above won't alter an existing table).
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS slug        TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS volume_24h  DOUBLE PRECISION;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS liquidity   DOUBLE PRECISION;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS closed      BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
+
+-- The worker retrieves only open markets; partial index keeps that scan tight.
+CREATE INDEX IF NOT EXISTS markets_open_idx ON markets (id) WHERE NOT closed;
 
 -- Approximate-nearest-neighbour index for cosine distance (the `<=>` operator).
 CREATE INDEX IF NOT EXISTS markets_embedding_idx ON markets

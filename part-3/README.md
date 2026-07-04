@@ -13,8 +13,13 @@ turns large disagreements with the market into trade signals.
            (singleton)        (scalable, ×N)            (singleton)
                                    │
                                    ▼
-                          Postgres + pgvector
-                       (markets + embeddings + beliefs)
+   Polymarket ──▶ ┌────────┐   Postgres + pgvector
+   (Gamma API)    │ syncer │──▶ (markets + embeddings + beliefs)
+                  └────────┘
+                 (singleton)
+
+- **syncer** — fetches fresh Polymarket markets, embeds them, marks resolved
+  ones closed. *Keeps the market set the worker searches against live. Singleton.*
 ```
 
 - **feeder** — polls RSS, dedups, pushes fresh articles to Redis. *Dumb on purpose.*
@@ -32,12 +37,12 @@ service, selected via `target:` in `docker-compose.yml`.
 
 ## What's built so far
 
-The **feeder**, **Redis**, **Postgres + pgvector**, and the **worker** (market
-analyzer). The `signal` service is still stubbed in the compose file.
+The **feeder**, **Redis**, **Postgres + pgvector**, the **worker** (market
+analyzer), and the **syncer** (market ingestion). The `signal` service is still
+stubbed in the compose file.
 
-Market *ingestion* (loading markets + embeddings into Postgres) is a separate
-component and not built yet — `db/seed_markets.py` inserts a couple of fixtures
-so the worker is exercisable end-to-end in the meantime.
+`db/seed_markets.py` remains as a quick fixture loader for smoke-testing the
+worker without running the syncer.
 
 ## Run the worker
 
@@ -95,6 +100,40 @@ python -m services.feeder.main --once   # one poll cycle, then exit
 python -m services.feeder.main          # poll forever
 ```
 
+## Run the syncer
+
+```sh
+cd part-3
+docker compose up --build syncer    # starts postgres + syncer
+docker compose logs -f syncer       # watch "synced: +N new, ~M refreshed, K resolved"
+```
+
+One cycle on the host (needs `DATABASE_URL` + `VOYAGE_API_KEY`):
+
+```sh
+pip install -r requirements.txt
+python -m services.syncer.main --once   # fetch + embed + resolve once, then exit
+python -m services.syncer.main          # sync forever (default once a day)
+```
+
+Inspect the ingested markets:
+
+```sh
+docker compose exec postgres psql -U pm -d pm -c \
+  'SELECT id, slug, current_score, volume_24h, end_date, closed FROM markets ORDER BY updated_at DESC LIMIT 10;'
+```
+
+`current_score` is seeded with the Polymarket yes-price at ingest, then the
+worker overwrites it as news arrives. Re-syncing an existing market refreshes its
+volume/liquidity/end_date but never resets that belief.
+
+Each cycle the syncer re-checks every open market against Gamma and, when one has
+resolved (Gamma reports it closed or no longer returns it), sets `closed = TRUE`
+(and `resolved_at`) rather than deleting it: the worker excludes closed markets
+from retrieval, but the row and its `belief_updates` history are kept so a later
+pass can score our predictions against the outcome. The check is cheap because it
+queries only our own open markets (a few hundred), not Polymarket's full list.
+
 ## Layout
 
 ```
@@ -104,11 +143,13 @@ lib/                shared, importable package
   schemas.py        Article + BeliefUpdate — the queue payload contracts
   queue.py          Redis list queue wrappers (news + belief)
   dedup.py          atomic Redis URL de-duplication
-  embeddings.py     Voyage embedder
-  db.py             Postgres + pgvector access (top-k + atomic score swap)
+  embeddings.py     Voyage embedder (query side + document side)
+  polymarket.py     Gamma API client (fetch fresh markets + resolution status)
+  db.py             Postgres + pgvector access (top-k, score swap, sync, resolve)
   claude.py         price-blind re-evaluation call
 services/feeder/    the RSS poller (producer)
 services/worker/    the market analyzer (consumer, scalable)
+services/syncer/    the market ingestion service (singleton)
 prompts/            worker system + re-eval prompt templates
 db/                 init.sql (schema) + seed_markets.py (dev fixtures)
 Dockerfile          multi-stage: base + per-service targets

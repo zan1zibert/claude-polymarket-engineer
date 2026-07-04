@@ -74,6 +74,23 @@ services:
     volumes:
       - audit_logs:/data
 
+  syncer:        # SINGLETON: market ingestion (fetch + embed + prune)
+    build:
+      context: .
+      target: syncer
+    environment:
+      DATABASE_URL: postgresql://pm:pm@postgres:5432/pm
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      SYNC_INTERVAL_SECONDS: "86400"
+      RESOLUTION_WINDOW_DAYS: "7"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    # SINGLETON — more than one syncer = duplicate Gamma fetches. Do not scale.
+    deploy:
+      replicas: 1
+
   # --- added later ---
   # signal:        # SINGLETON: mutates positions, do not scale
   #   build: { context: ., target: signal }

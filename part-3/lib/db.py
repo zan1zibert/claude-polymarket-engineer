@@ -1,8 +1,15 @@
 """Relational + vector store access (Postgres + pgvector).
 
-Two operations the worker needs:
+Operations the worker needs:
   - top_k_markets   : nearest markets to an article embedding (read-only)
   - apply_belief_update : atomically swap a market's score and log the transition
+
+Operations the market-syncer needs (services/syncer/):
+  - existing_market_ids     : which of these ids do we already store?
+  - insert_markets          : add new markets (score seeded from Polymarket price)
+  - refresh_market_metadata : refresh volatile fields, leaving belief + embedding
+  - open_market_ids         : every market still open — the resolution check set
+  - mark_resolved           : flag resolved markets closed (rows kept for scoring)
 
 Concurrency note: the worker is scalable (×N), so two workers can re-score the
 SAME market at once. The score swap therefore runs in a short transaction that
@@ -49,6 +56,7 @@ class Db:
                     SELECT id, question, description, current_score,
                            embedding <=> %s AS distance
                     FROM markets
+                    WHERE NOT closed
                     ORDER BY distance
                     LIMIT %s
                 ) ranked
@@ -106,3 +114,76 @@ class Db:
             article_url=article_url,
             reasoning=reasoning,
         )
+
+    # ----------------------------------------------------------------- syncer
+
+    def existing_market_ids(self, ids: list[str]) -> set[str]:
+        """Subset of `ids` already present, so the syncer only embeds new ones."""
+        if not ids:
+            return set()
+        with self._conn.cursor() as cur:
+            cur.execute("SELECT id FROM markets WHERE id = ANY(%s)", (ids,))
+            return {r[0] for r in cur.fetchall()}
+
+    def insert_markets(self, rows: list[dict]) -> int:
+        """Insert new markets, seeding current_score with the Polymarket price.
+
+        Each row carries an already-computed `embedding`. ON CONFLICT DO NOTHING
+        makes this safe if a market was inserted concurrently; the caller is
+        expected to have filtered to genuinely-new ids already.
+        """
+        if not rows:
+            return 0
+        inserted = 0
+        with self._conn.cursor() as cur:
+            for m in rows:
+                cur.execute(
+                    """
+                    INSERT INTO markets
+                        (id, question, description, end_date, current_score,
+                         slug, volume_24h, liquidity, embedding)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        m["id"], m["question"], m["description"],
+                        m["end_date"] or None, m["yes_price"], m["slug"],
+                        m["volume_24h"], m["liquidity"], Vector(m["embedding"]),
+                    ),
+                )
+                inserted += cur.rowcount
+        return inserted
+
+    def open_market_ids(self) -> list[str]:
+        """Ids of every market still open — the set we re-check against Gamma.
+
+        We check all of them, not just those past `end_date`: Polymarket markets
+        can resolve early ("will X by date D" settles the moment X happens) and
+        some carry no end_date, so end_date is only an upper bound on resolution
+        and can't decide what to check. Affordable because this set is our own
+        holdings (a few hundred), not Polymarket's whole market list.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute("SELECT id FROM markets WHERE NOT closed")
+            return [r[0] for r in cur.fetchall()]
+
+    def mark_resolved(self, ids: list[str]) -> int:
+        """Flag resolved markets closed, preserving the row and its audit history.
+
+        Closed markets are excluded from `top_k_markets` so the worker stops
+        scoring them, but the row (and its belief_updates) is retained so a future
+        scoring pass can grade our predictions against the outcome. Idempotent —
+        only flips rows still open. Returns the number newly marked.
+        """
+        if not ids:
+            return 0
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE markets
+                   SET closed = TRUE, resolved_at = now(), updated_at = now()
+                 WHERE id = ANY(%s) AND NOT closed
+                """,
+                (ids,),
+            )
+            return cur.rowcount
