@@ -9,9 +9,23 @@ import redis
 from lib.schemas import Article, BeliefUpdate
 
 
+def _client(redis_url: str) -> "redis.Redis":
+    """Shared client config. `socket_keepalive` + `health_check_interval` keep an
+    idle connection alive (the worker's blocking pop can sit idle for minutes),
+    and `retry_on_timeout` rides out a blip instead of surfacing it.
+    """
+    return redis.from_url(
+        redis_url,
+        decode_responses=True,
+        socket_keepalive=True,
+        health_check_interval=30,
+        retry_on_timeout=True,
+    )
+
+
 class NewsQueue:
     def __init__(self, redis_url: str, queue_key: str):
-        self._r = redis.from_url(redis_url, decode_responses=True)
+        self._r = _client(redis_url)
         self._key = queue_key
 
     def push(self, article: Article) -> None:
@@ -22,8 +36,17 @@ class NewsQueue:
 
         BRPOP pairs with the feeder's LPUSH for FIFO order. The timeout lets the
         worker loop wake periodically to check for a shutdown signal.
+
+        A client-side socket read timeout on an empty queue is expected, not an
+        error: BRPOP blocks server-side for `timeout`s, and if the client's socket
+        timeout fires first (or races the nil reply) we treat it exactly like an
+        empty queue — return None and let the caller loop. Only genuine outages
+        raise ConnectionError, which still propagates.
         """
-        item = self._r.brpop(self._key, timeout=timeout)
+        try:
+            item = self._r.brpop(self._key, timeout=timeout)
+        except redis.exceptions.TimeoutError:
+            return None
         if item is None:
             return None
         _key, raw = item
@@ -38,7 +61,7 @@ class NewsQueue:
 
 class BeliefQueue:
     def __init__(self, redis_url: str, queue_key: str):
-        self._r = redis.from_url(redis_url, decode_responses=True)
+        self._r = _client(redis_url)
         self._key = queue_key
 
     def push(self, update: BeliefUpdate) -> None:
