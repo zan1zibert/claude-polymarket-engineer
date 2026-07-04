@@ -6,8 +6,8 @@ retrieval runs against a live market set. Each cycle:
   1. Fetch fresh binary markets resolving within RESOLUTION_WINDOW_DAYS.
   2. Embed the title + description of the *new* ones (Voyage, document side) and
      insert them — current_score seeded with the Polymarket yes-price, plus slug,
-     volume, liquidity and end_date. Existing markets keep their worker-evolved
-     belief and embedding; only volatile metadata is refreshed.
+     volume, liquidity and end_date. Existing markets are left untouched, keeping
+     their worker-evolved belief and embedding.
   3. Re-check every open market against Gamma and mark the resolved ones (closed,
      or no longer returned) as closed — rows are kept (excluded from retrieval)
      so a later scoring pass can grade our predictions against the outcome.
@@ -66,7 +66,7 @@ def sync_once(
     db: Db, embedder: Embedder,
     settings: Settings
 ) -> dict:
-    """Run one full sync. Returns counts: fetched / inserted / refreshed / resolved."""
+    """Run one full sync. Returns counts: fetched / inserted / resolved."""
     fetched = polymarket.fetch_markets(
         client,
         window_days=settings.resolution_window_days,
@@ -151,8 +151,8 @@ def run(once: bool = False) -> None:
             try:
                 c = sync_once(client, db, embedder, settings)
                 log.info(
-                    "synced: %d candidates, +%d new, ~%d refreshed, %d resolved",
-                    c["fetched"], c["inserted"], c["refreshed"], c["resolved"],
+                    "synced: %d candidates, +%d new, %d resolved",
+                    c["fetched"], c["inserted"], c["resolved"],
                 )
             except Exception:
                 log.exception("sync cycle failed")
