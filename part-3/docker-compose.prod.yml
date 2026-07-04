@@ -1,0 +1,49 @@
+# Production overrides for the single-VM deployment. Layer it on top of the base
+# file (base first, this second so it wins):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# What this adds on top of docker-compose.yml:
+#   - log rotation on every service, so JSON container logs can't fill the disk
+#   - restart: unless-stopped on the datastores too (base already has it on the
+#     workers) so the whole stack comes back after a reboot / crash
+#   - a real Postgres password sourced from .env instead of the pm/pm dev default
+#
+# It intentionally does NOT change the port mappings: the base file binds Redis
+# and Postgres to 127.0.0.1 only, so they're reachable from the VM itself (use an
+# SSH tunnel for psql/redis-cli) but never from the internet. Keep the host/cloud
+# firewall restricted to inbound SSH — nothing else needs to be reachable.
+#
+# Requires POSTGRES_PASSWORD in .env (compose errors out if it's missing).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  redis:
+    restart: unless-stopped
+    logging: *default-logging
+
+  postgres:
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      # user + db stay `pm` (from the base file); only the password is hardened.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+
+  feeder:
+    logging: *default-logging
+
+  worker:
+    logging: *default-logging
+    environment:
+      # override the base pm:pm DSN with the real password from .env
+      DATABASE_URL: postgresql://pm:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/pm
+
+  syncer:
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgresql://pm:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/pm
