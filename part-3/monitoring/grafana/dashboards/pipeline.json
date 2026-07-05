@@ -8,6 +8,24 @@
   "refresh": "10s",
   "schemaVersion": 39,
   "tags": ["polymarket", "pipeline"],
+  "templating": {
+    "list": [
+      {
+        "name": "window",
+        "label": "Funnel window",
+        "type": "custom",
+        "query": "10m,30m,1h",
+        "current": { "text": "30m", "value": "30m" },
+        "options": [
+          { "text": "10m", "value": "10m", "selected": false },
+          { "text": "30m", "value": "30m", "selected": true },
+          { "text": "1h", "value": "1h", "selected": false }
+        ],
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
   "time": { "from": "now-6h", "to": "now" },
   "timepicker": {},
   "timezone": "",
@@ -18,14 +36,15 @@
   "panels": [
     {
       "id": 1,
-      "title": "Pipeline funnel (events/sec)",
-      "description": "Each stage as a rate. The stage where the line drops off is your bottleneck.",
+      "title": "Pipeline funnel (events per ${window})",
+      "description": "Each stage as a rolling count over the selected window (dropdown, top-left). The stage where the line drops off is your bottleneck.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 9, "w": 16, "x": 0, "y": 0 },
       "fieldConfig": {
         "defaults": {
-          "unit": "cps",
+          "unit": "short",
+          "decimals": 0,
           "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }
         },
         "overrides": []
@@ -35,12 +54,12 @@
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
-        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(feeder_poll_cycles_total[5m]))", "legendFormat": "1 · poll cycles" },
-        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(feeder_articles_pushed_total[5m]))", "legendFormat": "2 · articles pushed" },
-        { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_articles_processed_total[5m]))", "legendFormat": "3 · articles processed" },
-        { "refId": "D", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_markets_matched_total[5m]))", "legendFormat": "4 · markets matched (past gate)" },
-        { "refId": "E", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_markets_reevaluated_total[5m]))", "legendFormat": "5 · markets re-evaluated" },
-        { "refId": "F", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_belief_updates_total[5m]))", "legendFormat": "6 · belief updates" }
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(increase(feeder_poll_cycles_total[$window]))", "legendFormat": "1 · poll cycles" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(increase(feeder_articles_pushed_total[$window]))", "legendFormat": "2 · articles pushed" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(increase(worker_articles_processed_total[$window]))", "legendFormat": "3 · articles processed" },
+        { "refId": "D", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(increase(worker_markets_matched_total[$window]))", "legendFormat": "4 · markets matched (past gate)" },
+        { "refId": "E", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(increase(worker_markets_reevaluated_total[$window]))", "legendFormat": "5 · markets re-evaluated" },
+        { "refId": "F", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(increase(worker_belief_updates_total[$window]))", "legendFormat": "6 · belief updates" }
       ]
     },
     {
