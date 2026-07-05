@@ -21,8 +21,15 @@ FEEDER_RSS_FEEDS = Gauge(
 FEEDER_POLL_CYCLES = Counter(
     "feeder_poll_cycles_total", "Completed feeder poll cycles"
 )
+FEEDER_ARTICLES_FETCHED = Counter(
+    "feeder_articles_fetched_total",
+    "Articles parsed off a feed this poll, before dedup/freshness gates",
+    ["source"],
+)
 FEEDER_ARTICLES_PUSHED = Counter(
-    "feeder_articles_pushed_total", "Articles pushed onto the news queue"
+    "feeder_articles_pushed_total",
+    "Articles pushed onto the news queue (survived dedup + freshness)",
+    ["source"],
 )
 NEWS_QUEUE_DEPTH = Gauge(
     "news_queue_depth", "Current depth of the news queue (LLEN)"

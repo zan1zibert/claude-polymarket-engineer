@@ -118,7 +118,9 @@ async def fetch_feed(client: httpx.AsyncClient, feed: Feed) -> list[tuple[str, A
     _validators[feed.url] = (resp.headers.get("ETag"), resp.headers.get("Last-Modified"))
 
     parsed = feedparser.parse(resp.content)
-    return [pair for e in parsed.entries if (pair := _entry_to_article(e, feed))]
+    pairs = [pair for e in parsed.entries if (pair := _entry_to_article(e, feed))]
+    metrics.FEEDER_ARTICLES_FETCHED.labels(source=feed.name).inc(len(pairs))
+    return pairs
 
 
 async def poll_once(
@@ -138,7 +140,7 @@ async def poll_once(
             if not dedup.is_new(key):
                 continue
             queue.push(a)
-            metrics.FEEDER_ARTICLES_PUSHED.inc()
+            metrics.FEEDER_ARTICLES_PUSHED.labels(source=a.source).inc()
             pushed += 1
     return pushed
 
@@ -165,6 +167,11 @@ async def run(once: bool = False) -> None:
 
     metrics.start_metrics_server(settings.metrics_port)
     metrics.FEEDER_RSS_FEEDS.set(len(FEEDS))
+    # Register every feed's label series up front so all feeds appear in
+    # dashboards immediately, at 0, rather than only after their first article.
+    for f in FEEDS:
+        metrics.FEEDER_ARTICLES_FETCHED.labels(source=f.name)
+        metrics.FEEDER_ARTICLES_PUSHED.labels(source=f.name)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

@@ -213,6 +213,63 @@
       "targets": [
         { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_markets_matched_total[30m])) / clamp_min(sum(rate(worker_articles_processed_total[30m])) - sum(rate(worker_articles_skipped_total[30m])), 1e-9)", "legendFormat": "markets/article" }
       ]
+    },
+    {
+      "id": 12,
+      "title": "Articles pushed per feed",
+      "description": "Per-minute rate of new (deduped, fresh) articles enqueued, by feed. Flat-at-zero lines are dead weight.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 33 },
+      "fieldConfig": {
+        "defaults": { "unit": "cpm", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["last", "sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (source) (rate(feeder_articles_pushed_total[5m])) * 60", "legendFormat": "{{source}}" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Per-feed volume (last 5m / 30m)",
+      "description": "Articles fetched off each feed vs. pushed after dedup+freshness. A big fetched/pushed gap = the feed mostly re-serves stale items.",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 33 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "fetched 30m" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } } ] },
+          { "matcher": { "id": "byName", "options": "pushed 30m" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } } ] }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [ { "displayName": "pushed 30m", "desc": true } ]
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "increase(feeder_articles_fetched_total[5m])", "format": "table", "instant": true },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "increase(feeder_articles_fetched_total[30m])", "format": "table", "instant": true },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "increase(feeder_articles_pushed_total[5m])", "format": "table", "instant": true },
+        { "refId": "D", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "increase(feeder_articles_pushed_total[30m])", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "source", "mode": "outer" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time 1": true, "Time 2": true, "Time 3": true, "Time 4": true, "job": true, "instance": true, "service": true, "__name__": true },
+            "indexByName": {},
+            "renameByName": {
+              "Value #A": "fetched 5m",
+              "Value #B": "fetched 30m",
+              "Value #C": "pushed 5m",
+              "Value #D": "pushed 30m"
+            }
+          }
+        }
+      ]
     }
   ]
 }
