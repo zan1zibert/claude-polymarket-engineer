@@ -82,7 +82,7 @@ services:
       DATABASE_URL: postgresql://pm:pm@postgres:5432/pm
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       SYNC_INTERVAL_SECONDS: "86400"
-      RESOLUTION_WINDOW_DAYS: "7"
+      RESOLUTION_WINDOW_DAYS: "14"
     depends_on:
       postgres:
         condition: service_healthy
