@@ -50,7 +50,8 @@ def load_settings() -> Settings:
         http_timeout_seconds=float(os.environ.get("HTTP_TIMEOUT_SECONDS", "15")),
         user_agent=os.environ.get(
             "USER_AGENT",
-            "claude-polymarket-engineer/0.1 (+https://github.com/zan1zibert/claude-polymarket-engineer)",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
         ),
         database_url=os.environ.get(
             "DATABASE_URL", "postgresql://pm:pm@localhost:5432/pm"
