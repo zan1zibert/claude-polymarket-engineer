@@ -1,0 +1,218 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["polymarket", "pipeline"],
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Polymarket Pipeline",
+  "uid": "pm-pipeline",
+  "version": 1,
+  "weekStart": "",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Pipeline funnel (events/sec)",
+      "description": "Each stage as a rate. The stage where the line drops off is your bottleneck.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["last", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(feeder_poll_cycles_total[5m]))", "legendFormat": "1 · poll cycles" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(feeder_articles_pushed_total[5m]))", "legendFormat": "2 · articles pushed" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_articles_processed_total[5m]))", "legendFormat": "3 · articles processed" },
+        { "refId": "D", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_markets_matched_total[5m]))", "legendFormat": "4 · markets matched (past gate)" },
+        { "refId": "E", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_markets_reevaluated_total[5m]))", "legendFormat": "5 · markets re-evaluated" },
+        { "refId": "F", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_belief_updates_total[5m]))", "legendFormat": "6 · belief updates" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Article match rate",
+      "description": "Fraction of processed articles that found at least one market past the cosine gate. Low = relevance-bound (the bottleneck we discussed).",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "yellow", "value": 0.1 },
+            { "color": "green", "value": 0.3 }
+          ] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "1 - (sum(rate(worker_articles_skipped_total[30m])) / clamp_min(sum(rate(worker_articles_processed_total[30m])), 1e-9))", "legendFormat": "match rate" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "News queue depth",
+      "description": "Near 0 = workers starved (ingestion-bound). Growing = worker/Claude-bound.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(news_queue_depth)", "legendFormat": "queue depth" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Claude tokens/sec",
+      "description": "Input vs output token throughput — cost and rate-limit pressure.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (type) (rate(claude_tokens_total[5m]))", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Voyage embedding tokens/sec",
+      "description": "Query (worker) vs document (syncer) embedding token throughput.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (operation) (rate(voyage_embedding_tokens_total[5m]))", "legendFormat": "{{operation}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Claude re-eval latency",
+      "description": "p50 / p95 wall-clock per Claude re-evaluation call.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.5, sum(rate(claude_reeval_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum(rate(claude_reeval_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Syncer activity (events/sec)",
+      "description": "Market ingestion: fetched candidates, new inserts, resolutions.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "fieldConfig": {
+        "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(syncer_markets_fetched_total[30m]))", "legendFormat": "fetched" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(syncer_markets_inserted_total[30m]))", "legendFormat": "inserted" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(syncer_markets_resolved_total[30m]))", "legendFormat": "resolved" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "RSS feeds",
+      "description": "Number of feeds in the registry.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 25 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(feeder_rss_feeds)", "legendFormat": "feeds" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Belief updates / hr",
+      "description": "Pipeline output rate.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 25 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_belief_updates_total[30m])) * 3600", "legendFormat": "updates/hr" }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Re-eval failures / hr",
+      "description": "Claude calls that errored or failed to parse.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 25 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_reeval_failures_total[30m])) * 3600", "legendFormat": "failures/hr" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Markets per matched article",
+      "description": "Average markets returned per article that cleared the gate.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 25 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "purple" } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_markets_matched_total[30m])) / clamp_min(sum(rate(worker_articles_processed_total[30m])) - sum(rate(worker_articles_skipped_total[30m])), 1e-9)", "legendFormat": "markets/article" }
+      ]
+    }
+  ]
+}

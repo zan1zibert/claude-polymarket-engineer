@@ -8,6 +8,8 @@ Matching the types is what makes the cosine distances meaningful.
 """
 import voyageai
 
+from lib.metrics import VOYAGE_EMBEDDING_TOKENS
+
 
 class Embedder:
     # Voyage caps input length; we stay well under it and trust the API to
@@ -27,6 +29,7 @@ class Embedder:
             truncation=True,
             output_dimension=self._dim,
         )
+        VOYAGE_EMBEDDING_TOKENS.labels(operation="query").inc(result.total_tokens)
         return result.embeddings[0]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -44,4 +47,5 @@ class Embedder:
             truncation=True,
             output_dimension=self._dim,
         )
+        VOYAGE_EMBEDDING_TOKENS.labels(operation="document").inc(result.total_tokens)
         return result.embeddings

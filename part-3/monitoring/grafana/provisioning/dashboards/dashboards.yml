@@ -1,0 +1,15 @@
+# Dashboard provider — loads any dashboard JSON from the mounted folder so the
+# Pipeline dashboard is present the moment Grafana starts.
+apiVersion: 1
+
+providers:
+  - name: pipeline
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

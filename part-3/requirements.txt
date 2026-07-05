@@ -9,3 +9,4 @@ anthropic
 voyageai
 psycopg[binary]
 pgvector
+prometheus_client

@@ -1,0 +1,26 @@
+# Prometheus scrape config for the Polymarket pipeline.
+#
+# Each service exposes /metrics on :8000 (METRICS_PORT). We use DNS service
+# discovery against the compose service names: Docker's embedded DNS returns an
+# A record per running container, so a scaled worker (docker compose up
+# --scale worker=3) is discovered and scraped across every replica with no
+# config change.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: pipeline
+    dns_sd_configs:
+      - names: [feeder, worker, syncer]
+        type: A
+        port: 8000
+    relabel_configs:
+      # Label each series with the compose service name (feeder/worker/syncer)
+      # derived from the discovered A-record target, so dashboards can filter by job.
+      - source_labels: [__meta_dns_name]
+        target_label: service
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

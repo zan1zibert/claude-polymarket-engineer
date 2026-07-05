@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 from lib.config import Settings, load_settings
 from lib.dedup import Dedup, normalize_url
 from lib.feeds import FEEDS, Feed
+from lib import metrics
 from lib.queue import NewsQueue
 from lib.schemas import Article
 
@@ -137,6 +138,7 @@ async def poll_once(
             if not dedup.is_new(key):
                 continue
             queue.push(a)
+            metrics.FEEDER_ARTICLES_PUSHED.inc()
             pushed += 1
     return pushed
 
@@ -161,6 +163,9 @@ async def run(once: bool = False) -> None:
 
     _wait_for_redis(queue)
 
+    metrics.start_metrics_server(settings.metrics_port)
+    metrics.FEEDER_RSS_FEEDS.set(len(FEEDS))
+
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -178,7 +183,10 @@ async def run(once: bool = False) -> None:
         while not stop.is_set():
             try:
                 pushed = await poll_once(client, queue, dedup, settings)
-                log.info("pushed %d new articles (queue depth %d)", pushed, queue.depth())
+                depth = queue.depth()
+                metrics.FEEDER_POLL_CYCLES.inc()
+                metrics.NEWS_QUEUE_DEPTH.set(depth)
+                log.info("pushed %d new articles (queue depth %d)", pushed, depth)
             except Exception:
                 log.exception("poll cycle failed")
 

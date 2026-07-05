@@ -32,6 +32,7 @@ from lib.claude import reevaluate
 from lib.config import Settings, load_settings
 from lib.db import Db
 from lib.embeddings import Embedder
+from lib import metrics
 from lib.queue import BeliefQueue, NewsQueue
 from lib.schemas import Article, BeliefUpdate
 
@@ -70,32 +71,39 @@ def process_article(
     belief_queue: BeliefQueue,
     settings: Settings,
 ) -> None:
+    metrics.WORKER_ARTICLES_PROCESSED.inc()
     embedding = embedder.embed_query(f"{article.title}\n{article.summary}")
     markets = db.top_k_markets(embedding, settings.top_k, settings.max_cosine_distance)
     if not markets:
+        metrics.WORKER_ARTICLES_SKIPPED.inc()
         log.info("no relevant markets for %r, skipping", article.title)
         return
 
+    metrics.WORKER_MARKETS_MATCHED.inc(len(markets))
     log.info("%r matched %d market(s)", article.title, len(markets))
     article_payload = {"title": article.title, "summary": article.summary, "url": article.url}
 
     for market in markets:
-        result = reevaluate(
-            {"question": market.question, "description": market.description},
-            market.current_score,
-            article_payload,
-            model=settings.anthropic_model,
-            use_web_search=settings.worker_use_web_search,
-        )
+        with metrics.CLAUDE_REEVAL_DURATION.time():
+            result = reevaluate(
+                {"question": market.question, "description": market.description},
+                market.current_score,
+                article_payload,
+                model=settings.anthropic_model,
+                use_web_search=settings.worker_use_web_search,
+            )
         if "error" in result or "probability" not in result:
+            metrics.WORKER_REEVAL_FAILURES.inc()
             log.warning("eval failed for market %s: %s", market.id, result.get("error", result))
             continue
 
+        metrics.WORKER_MARKETS_REEVALUATED.inc()
         new_score = float(result["probability"])
         reasoning = result.get("reasoning", "")
         update = db.apply_belief_update(market.id, new_score, article.url, reasoning)
 
         belief_queue.push(update)
+        metrics.WORKER_BELIEF_UPDATES.inc()
         _audit(settings.audit_log_path, update)
         prev = "—" if update.previous_score is None else f"{update.previous_score:.2f}"
         log.info(
@@ -116,6 +124,8 @@ def run() -> None:
     _wait_for("postgres", db.ping)
 
     embedder = Embedder(settings.voyage_api_key, settings.voyage_model, settings.embedding_dim)
+
+    metrics.start_metrics_server(settings.metrics_port)
 
     stop = {"flag": False}
     for sig in (signal.SIGINT, signal.SIGTERM):

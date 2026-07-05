@@ -16,6 +16,7 @@ class Settings:
     dedup_ttl_seconds: int
     http_timeout_seconds: float
     user_agent: str
+    metrics_port: int            # port each service exposes /metrics on (Prometheus scrape)
 
     # --- worker (market analyzer) ---
     database_url: str
@@ -53,6 +54,7 @@ def load_settings() -> Settings:
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
         ),
+        metrics_port=int(os.environ.get("METRICS_PORT", "8000")),
         database_url=os.environ.get(
             "DATABASE_URL", "postgresql://pm:pm@localhost:5432/pm"
         ),

@@ -15,6 +15,8 @@ from pathlib import Path
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
+from lib.metrics import CLAUDE_TOKENS
+
 load_dotenv()
 
 _client = Anthropic()  # reads ANTHROPIC_API_KEY from env
@@ -91,12 +93,21 @@ def reevaluate(
     text = _final_text(response)
     searches = _count_searches(response)
 
+    # Record token usage for cost/throughput dashboards. The usage object is
+    # always present on a successful response, regardless of parse outcome below.
+    input_tokens = response.usage.input_tokens
+    output_tokens = response.usage.output_tokens
+    CLAUDE_TOKENS.labels(type="input").inc(input_tokens)
+    CLAUDE_TOKENS.labels(type="output").inc(output_tokens)
+    usage = {"input_tokens": input_tokens, "output_tokens": output_tokens}
+
     try:
         start = text.find("{")
         end = text.rfind("}") + 1
         parsed = json.loads(text[start:end])
     except (json.JSONDecodeError, ValueError):
-        return {"error": "Failed to parse JSON", "raw": text, "web_searches": searches}
+        return {"error": "Failed to parse JSON", "raw": text, "web_searches": searches, "usage": usage}
 
     parsed["web_searches"] = searches
+    parsed["usage"] = usage
     return parsed

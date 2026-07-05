@@ -30,7 +30,7 @@ from typing import Optional
 import httpx
 from dotenv import load_dotenv
 
-from lib import polymarket
+from lib import metrics, polymarket
 from lib.config import Settings, load_settings
 from lib.db import Db
 from lib.embeddings import Embedder
@@ -132,6 +132,8 @@ def run(once: bool = False) -> None:
         settings.voyage_api_key, settings.voyage_model, settings.embedding_dim
     )
 
+    metrics.start_metrics_server(settings.metrics_port)
+
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
@@ -150,6 +152,9 @@ def run(once: bool = False) -> None:
         while not stop.is_set():
             try:
                 c = sync_once(client, db, embedder, settings)
+                metrics.SYNCER_MARKETS_FETCHED.inc(c["fetched"])
+                metrics.SYNCER_MARKETS_INSERTED.inc(c["inserted"])
+                metrics.SYNCER_MARKETS_RESOLVED.inc(c["resolved"])
                 log.info(
                     "synced: %d candidates, +%d new, %d resolved",
                     c["fetched"], c["inserted"], c["resolved"],
