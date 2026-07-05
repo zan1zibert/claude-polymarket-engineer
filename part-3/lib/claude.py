@@ -9,6 +9,7 @@ Mirrors the parsing approach of part-1/utils/claude.py (final text block + a
 defensive JSON extraction) so behaviour is consistent across the repo.
 """
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from anthropic import Anthropic
@@ -71,6 +72,7 @@ def reevaluate(
         question=market["question"],
         description=market.get("description", "") or "(no description)",
         current_score=prior,
+        current_time=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
         article_title=article["title"],
         article_summary=article.get("summary", "") or "(no summary)",
         article_url=article["url"],
