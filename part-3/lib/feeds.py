@@ -26,6 +26,12 @@ FEEDS: list[Feed] = [
     # Politics
     Feed("Guardian US Politics", "https://www.theguardian.com/us-news/us-politics/rss", "politics"),
     Feed("Politico", "https://rss.politico.com/politics-news.xml", "politics"),
+    Feed("The Hill", "https://thehill.com/homenews/feed/", "politics"),
+    Feed("NPR Politics", "https://feeds.npr.org/1014/rss.xml", "politics"),
+    Feed("BBC Politics", "https://feeds.bbci.co.uk/news/politics/rss.xml", "politics"),
+    Feed("Guardian Politics", "https://www.theguardian.com/politics/rss", "politics"),
+    Feed("ABC News Politics", "https://abcnews.go.com/abcnews/politicsheadlines", "politics"),
+    Feed("Foreign Policy", "https://foreignpolicy.com/feed/", "politics"),
     # Finance / markets
     Feed("BBC Business", "http://feeds.bbci.co.uk/news/business/rss.xml", "finance"),
     Feed("CNBC Top News", "https://www.cnbc.com/id/100003114/device/rss/rss.html", "finance"),

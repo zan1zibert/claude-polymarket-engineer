@@ -289,6 +289,50 @@
           }
         }
       ]
+    },
+    {
+      "id": 14,
+      "title": "News source conversion (over ${window})",
+      "description": "Per source: articles the worker processed, how many matched a market, belief updates produced, and the conversion ratios. Low match rate = the source pushes news your (politics) markets don't care about — a candidate to drop.",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 42 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "match rate" }, "properties": [ { "id": "unit", "value": "percentunit" }, { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } }, { "id": "min", "value": 0 }, { "id": "max", "value": 1 } ] },
+          { "matcher": { "id": "byName", "options": "belief updates" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } } ] },
+          { "matcher": { "id": "byName", "options": "updates/article" }, "properties": [ { "id": "decimals", "value": 2 } ] }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [ { "displayName": "belief updates", "desc": true } ]
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (source) (increase(worker_articles_processed_total[$window]))", "format": "table", "instant": true },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (source) (increase(worker_markets_matched_total[$window]))", "format": "table", "instant": true },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (source) (increase(worker_belief_updates_total[$window]))", "format": "table", "instant": true },
+        { "refId": "D", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "1 - sum by (source) (increase(worker_articles_skipped_total[$window])) / clamp_min(sum by (source) (increase(worker_articles_processed_total[$window])), 1e-9)", "format": "table", "instant": true },
+        { "refId": "E", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (source) (increase(worker_belief_updates_total[$window])) / clamp_min(sum by (source) (increase(worker_articles_processed_total[$window])), 1e-9)", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "source", "mode": "outer" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time 1": true, "Time 2": true, "Time 3": true, "Time 4": true, "Time 5": true },
+            "indexByName": {},
+            "renameByName": {
+              "Value #A": "processed",
+              "Value #B": "markets matched",
+              "Value #C": "belief updates",
+              "Value #D": "match rate",
+              "Value #E": "updates/article"
+            }
+          }
+        }
+      ]
     }
   ]
 }

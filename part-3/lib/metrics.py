@@ -37,13 +37,16 @@ NEWS_QUEUE_DEPTH = Gauge(
 
 # --- worker ---
 WORKER_ARTICLES_PROCESSED = Counter(
-    "worker_articles_processed_total", "Articles dequeued and processed by the worker"
+    "worker_articles_processed_total", "Articles dequeued and processed by the worker",
+    ["source"],
 )
 WORKER_ARTICLES_SKIPPED = Counter(
-    "worker_articles_skipped_total", "Articles with no market past the cosine gate"
+    "worker_articles_skipped_total", "Articles with no market past the cosine gate",
+    ["source"],
 )
 WORKER_MARKETS_MATCHED = Counter(
-    "worker_markets_matched_total", "Markets returned within the cosine-distance gate"
+    "worker_markets_matched_total", "Markets returned within the cosine-distance gate",
+    ["source"],
 )
 WORKER_MARKETS_REEVALUATED = Counter(
     "worker_markets_reevaluated_total", "Markets successfully re-evaluated by Claude"
@@ -52,7 +55,8 @@ WORKER_REEVAL_FAILURES = Counter(
     "worker_reeval_failures_total", "Claude re-evaluations that errored or failed to parse"
 )
 WORKER_BELIEF_UPDATES = Counter(
-    "worker_belief_updates_total", "Belief updates produced and pushed downstream"
+    "worker_belief_updates_total", "Belief updates produced and pushed downstream",
+    ["source"],
 )
 CLAUDE_REEVAL_DURATION = Histogram(
     "claude_reeval_duration_seconds", "Wall-clock duration of one Claude re-evaluation call"
