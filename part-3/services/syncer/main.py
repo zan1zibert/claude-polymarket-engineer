@@ -140,10 +140,11 @@ def run(once: bool = False) -> None:
         signal.signal(sig, lambda *_: stop.set())
 
     log.info(
-        "syncer started: window %dd, every %ds, fetch<=%d",
+        "syncer started: window %dd, every %ds, fetch<=%d, tag_id=%d",
         settings.resolution_window_days,
         settings.sync_interval_seconds,
         settings.sync_fetch_limit,
+        settings.sync_tag_filter
     )
 
     with httpx.Client(
