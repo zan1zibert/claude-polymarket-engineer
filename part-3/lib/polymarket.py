@@ -63,6 +63,7 @@ def fetch_markets(
     client: httpx.Client,
     window_days: int,
     limit: int,
+    tag_id: int,
     url: str = GAMMA_MARKETS_URL
 ) -> list[dict]:
     """Active, open binary markets resolving within `window_days`, normalized.
@@ -75,6 +76,7 @@ def fetch_markets(
         "closed": "false",
         "archived": "false",
         "limit": limit,
+        "tag_id": tag_id,
         "order": "volume24hr",
         "ascending": "false",
         "end_date_min": now.isoformat(),

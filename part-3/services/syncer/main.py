@@ -71,6 +71,7 @@ def sync_once(
         client,
         window_days=settings.resolution_window_days,
         limit=settings.sync_fetch_limit,
+        tag_id=settings.sync_tag_filter,
         url=settings.gamma_markets_url,
     )
     candidates = polymarket.filter_markets(

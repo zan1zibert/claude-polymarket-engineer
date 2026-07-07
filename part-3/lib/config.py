@@ -35,6 +35,7 @@ class Settings:
     sync_interval_seconds: int       # how often to re-sync the market set
     resolution_window_days: int      # only ingest markets resolving within this
     sync_fetch_limit: int            # max markets pulled from Gamma per cycle
+    sync_tag_filter: int             # filter markets by tag_id
     sync_min_volume_24h: float       # ingestion liquidity/volume gates
     sync_min_liquidity: float
     sync_price_band: tuple[float, float]  # drop near-resolved (0/1) markets
@@ -74,6 +75,7 @@ def load_settings() -> Settings:
         sync_interval_seconds=int(os.environ.get("SYNC_INTERVAL_SECONDS", "86400")),
         resolution_window_days=int(os.environ.get("RESOLUTION_WINDOW_DAYS", "7")),
         sync_fetch_limit=int(os.environ.get("SYNC_FETCH_LIMIT", "500")),
+        sync_tag_filter=int(os.environ.get("SYNC_TAG_FILTER", "2")), # Politics
         sync_min_volume_24h=float(os.environ.get("SYNC_MIN_VOLUME_24H", "5000")),
         sync_min_liquidity=float(os.environ.get("SYNC_MIN_LIQUIDITY", "10000")),
         sync_price_band=(
