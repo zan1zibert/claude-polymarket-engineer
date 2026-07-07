@@ -12,14 +12,16 @@
     "list": [
       {
         "name": "window",
-        "label": "Funnel window",
+        "label": "Window",
         "type": "custom",
-        "query": "10m,30m,1h",
-        "current": { "text": "30m", "value": "30m" },
+        "query": "10m,30m,1h,6h,24h",
+        "current": { "text": "1h", "value": "1h" },
         "options": [
           { "text": "10m", "value": "10m", "selected": false },
-          { "text": "30m", "value": "30m", "selected": true },
-          { "text": "1h", "value": "1h", "selected": false }
+          { "text": "30m", "value": "30m", "selected": false },
+          { "text": "1h", "value": "1h", "selected": true },
+          { "text": "6h", "value": "6h", "selected": false },
+          { "text": "24h", "value": "24h", "selected": false }
         ],
         "includeAll": false,
         "multi": false
@@ -235,18 +237,18 @@
     },
     {
       "id": 12,
-      "title": "Articles pushed per feed",
-      "description": "Per-minute rate of new (deduped, fresh) articles enqueued, by feed. Flat-at-zero lines are dead weight.",
+      "title": "Articles pushed per feed (per ${window})",
+      "description": "New (deduped, fresh) articles enqueued per feed, counted over the selected window (dropdown, top-left). Flat-at-zero lines are dead weight.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 33 },
       "fieldConfig": {
-        "defaults": { "unit": "cpm", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
+        "defaults": { "unit": "short", "decimals": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
         "overrides": []
       },
       "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["last", "sum"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (source) (rate(feeder_articles_pushed_total[5m])) * 60", "legendFormat": "{{source}}" }
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (source) (increase(feeder_articles_pushed_total[$window]))", "legendFormat": "{{source}}" }
       ]
     },
     {
