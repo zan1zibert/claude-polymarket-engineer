@@ -19,6 +19,7 @@ expensive Claude call happens OUTSIDE this lock (see services/worker/main.py),
 so the lock is held only for the two quick writes.
 """
 from datetime import datetime, timezone
+from typing import Optional
 
 import psycopg
 from pgvector import Vector
@@ -126,11 +127,14 @@ class Db:
             return {r[0] for r in cur.fetchall()}
 
     def insert_markets(self, rows: list[dict]) -> int:
-        """Insert new markets, seeding current_score with the Polymarket price.
+        """Insert new markets, seeding both current_score and the immutable seed_price
+        with the Polymarket yes-price at ingest.
 
-        Each row carries an already-computed `embedding`. ON CONFLICT DO NOTHING
-        makes this safe if a market was inserted concurrently; the caller is
-        expected to have filtered to genuinely-new ids already.
+        current_score is the belief the worker later overwrites; seed_price is the
+        scoring baseline and is never touched again. Each row carries an
+        already-computed `embedding`. ON CONFLICT DO NOTHING makes this safe if a
+        market was inserted concurrently; the caller is expected to have filtered to
+        genuinely-new ids already.
         """
         if not rows:
             return 0
@@ -141,14 +145,14 @@ class Db:
                     """
                     INSERT INTO markets
                         (id, question, description, end_date, current_score,
-                         slug, volume_24h, liquidity, embedding)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         seed_price, slug, volume_24h, liquidity, embedding)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO NOTHING
                     """,
                     (
                         m["id"], m["question"], m["description"],
-                        m["end_date"] or None, m["yes_price"], m["slug"],
-                        m["volume_24h"], m["liquidity"], Vector(m["embedding"]),
+                        m["end_date"] or None, m["yes_price"], m["yes_price"],
+                        m["slug"], m["volume_24h"], m["liquidity"], Vector(m["embedding"]),
                     ),
                 )
                 inserted += cur.rowcount
@@ -167,29 +171,29 @@ class Db:
             cur.execute("SELECT id FROM markets WHERE NOT closed")
             return [r[0] for r in cur.fetchall()]
 
-    def mark_resolved(self, resolutions: dict[str, dict]) -> int:
+    def mark_resolved(self, outcomes: dict[str, Optional[float]]) -> int:
         """Flag resolved markets closed and store their outcome, preserving the row.
 
-        `resolutions` maps market_id -> {outcomes, outcome_prices}; either value may
-        be None when Gamma no longer returns the market. Closed markets are excluded
-        from `top_k_markets` so the worker stops scoring them, but the row (and its
-        belief_updates) is retained so a future scoring pass can grade our predictions
-        against the outcome. Idempotent — only flips rows still open. Returns the
-        number newly marked.
+        `outcomes` maps market_id -> resolved_outcome (1.0 if YES won, 0.0 if NO won,
+        or None when the outcome isn't determinable — e.g. Gamma no longer returns the
+        market). Closed markets are excluded from `top_k_markets` so the worker stops
+        scoring them, but the row (and its belief_updates) is retained so a future
+        scoring pass can grade our predictions against the outcome. Idempotent — only
+        flips rows still open. Returns the number newly marked.
         """
-        if not resolutions:
+        if not outcomes:
             return 0
         resolved = 0
         with self._conn.cursor() as cur:
-            for market_id, data in resolutions.items():
+            for market_id, outcome in outcomes.items():
                 cur.execute(
                     """
                     UPDATE markets
                        SET closed = TRUE, resolved_at = now(), updated_at = now(),
-                           outcomes = %s, outcome_prices = %s
+                           resolved_outcome = %s
                      WHERE id = %s AND NOT closed
                     """,
-                    (data.get("outcomes"), data.get("outcome_prices"), market_id),
+                    (outcome, market_id),
                 )
                 resolved += cur.rowcount
         return resolved

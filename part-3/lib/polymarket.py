@@ -32,14 +32,25 @@ def _parse_json_field(value, default):
         return default
 
 
-def _json_text(value) -> Optional[str]:
-    """Canonical JSON text for outcomes/outcomePrices, which Gamma sends as a JSON
-    array or an already-JSON-encoded string. Returns None when absent."""
-    if value is None:
+def resolved_yes_price(market: dict) -> Optional[float]:
+    """Settled YES outcome for a resolved binary market: 1.0 if YES won, 0.0 if NO
+    won, or None if it isn't definitively settled. Gamma reports outcomePrices as
+    ["1","0"]/["0","1"] once resolved; we only trust a value within 1e-3 of 0 or 1,
+    so a market that's closed but not yet settled (or non-binary) yields None."""
+    outcomes = _parse_json_field(market.get("outcomes"), [])
+    prices = _parse_json_field(market.get("outcomePrices"), [])
+    if len(outcomes) != 2 or len(prices) != 2:
         return None
-    if isinstance(value, str):
-        return value
-    return json.dumps(value)
+    try:
+        price_map = {o.lower(): float(p) for o, p in zip(outcomes, prices)}
+    except (TypeError, ValueError):
+        return None
+    yes = price_map.get("yes")
+    if yes is None:
+        return None
+    if abs(yes) <= 1e-3 or abs(yes - 1.0) <= 1e-3:
+        return float(round(yes))
+    return None
 
 
 def normalize(market: dict) -> Optional[dict]:
@@ -118,7 +129,7 @@ def fetch_statuses(
     ids: list[str],
     url: str = GAMMA_MARKETS_URL
 ) -> dict[str, dict]:
-    """Current {closed, end_date, outcomes, outcome_prices} per id we still store, for the resolve step.
+    """Current {closed, end_date, resolved_outcome} per id we still store, for the resolve step.
 
     Queried in chunks to keep the URL short. Ids Gamma no longer returns are
     simply absent from the result; the caller treats "missing" as resolved.
@@ -135,7 +146,6 @@ def fetch_statuses(
             statuses[str(m.get("id"))] = {
                 "closed": bool(m.get("closed")),
                 "end_date": m.get("endDate"),
-                "outcomes": _json_text(m.get("outcomes")),
-                "outcome_prices": _json_text(m.get("outcomePrices")),
+                "resolved_outcome": resolved_yes_price(m),
             }
     return statuses
