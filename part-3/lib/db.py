@@ -167,23 +167,29 @@ class Db:
             cur.execute("SELECT id FROM markets WHERE NOT closed")
             return [r[0] for r in cur.fetchall()]
 
-    def mark_resolved(self, ids: list[str]) -> int:
-        """Flag resolved markets closed, preserving the row and its audit history.
+    def mark_resolved(self, resolutions: dict[str, dict]) -> int:
+        """Flag resolved markets closed and store their outcome, preserving the row.
 
-        Closed markets are excluded from `top_k_markets` so the worker stops
-        scoring them, but the row (and its belief_updates) is retained so a future
-        scoring pass can grade our predictions against the outcome. Idempotent —
-        only flips rows still open. Returns the number newly marked.
+        `resolutions` maps market_id -> {outcomes, outcome_prices}; either value may
+        be None when Gamma no longer returns the market. Closed markets are excluded
+        from `top_k_markets` so the worker stops scoring them, but the row (and its
+        belief_updates) is retained so a future scoring pass can grade our predictions
+        against the outcome. Idempotent — only flips rows still open. Returns the
+        number newly marked.
         """
-        if not ids:
+        if not resolutions:
             return 0
+        resolved = 0
         with self._conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE markets
-                   SET closed = TRUE, resolved_at = now(), updated_at = now()
-                 WHERE id = ANY(%s) AND NOT closed
-                """,
-                (ids,),
-            )
-            return cur.rowcount
+            for market_id, data in resolutions.items():
+                cur.execute(
+                    """
+                    UPDATE markets
+                       SET closed = TRUE, resolved_at = now(), updated_at = now(),
+                           outcomes = %s, outcome_prices = %s
+                     WHERE id = %s AND NOT closed
+                    """,
+                    (data.get("outcomes"), data.get("outcome_prices"), market_id),
+                )
+                resolved += cur.rowcount
+        return resolved

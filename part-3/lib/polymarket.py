@@ -32,6 +32,16 @@ def _parse_json_field(value, default):
         return default
 
 
+def _json_text(value) -> Optional[str]:
+    """Canonical JSON text for outcomes/outcomePrices, which Gamma sends as a JSON
+    array or an already-JSON-encoded string. Returns None when absent."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
 def normalize(market: dict) -> Optional[dict]:
     """Flatten a Gamma payload into the fields we store. None if non-binary/unusable."""
     outcomes = _parse_json_field(market.get("outcomes"), [])
@@ -108,7 +118,7 @@ def fetch_statuses(
     ids: list[str],
     url: str = GAMMA_MARKETS_URL
 ) -> dict[str, dict]:
-    """Current {closed, end_date} for each id we still store, for the resolve step.
+    """Current {closed, end_date, outcomes, outcome_prices} per id we still store, for the resolve step.
 
     Queried in chunks to keep the URL short. Ids Gamma no longer returns are
     simply absent from the result; the caller treats "missing" as resolved.
@@ -125,5 +135,7 @@ def fetch_statuses(
             statuses[str(m.get("id"))] = {
                 "closed": bool(m.get("closed")),
                 "end_date": m.get("endDate"),
+                "outcomes": _json_text(m.get("outcomes")),
+                "outcome_prices": _json_text(m.get("outcomePrices")),
             }
     return statuses

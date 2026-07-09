@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS markets (
     closed        BOOLEAN NOT NULL DEFAULT FALSE,  -- resolved on Polymarket; kept for
                                             -- scoring but excluded from retrieval
     resolved_at   TIMESTAMPTZ,              -- when the syncer marked it closed
+    outcomes       TEXT,                    -- JSON array e.g. ["Yes","No"]; set on resolution
+    outcome_prices TEXT,                    -- JSON array e.g. ["1","0"]; set on resolution
     embedding     VECTOR(1024) NOT NULL,    -- voyage-3.5 @ 1024 dims
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -38,6 +40,8 @@ ALTER TABLE markets ADD COLUMN IF NOT EXISTS volume_24h  DOUBLE PRECISION;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS liquidity   DOUBLE PRECISION;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS closed      BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS outcomes       TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS outcome_prices TEXT;
 
 -- The worker retrieves only open markets; partial index keeps that scan tight.
 CREATE INDEX IF NOT EXISTS markets_open_idx ON markets (id) WHERE NOT closed;

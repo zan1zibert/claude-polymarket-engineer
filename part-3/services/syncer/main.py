@@ -100,8 +100,14 @@ def sync_once(
     # early — and it's cheap, since the query is over our holdings, not all of Gamma.
     open_ids = db.open_market_ids()
     statuses = polymarket.fetch_statuses(client, open_ids, url=settings.gamma_markets_url)
-    to_resolve = [i for i in open_ids if _is_resolved(statuses.get(i))]
-    resolved = db.mark_resolved(to_resolve)
+    resolutions = {
+        i: {
+            "outcomes": (statuses.get(i) or {}).get("outcomes"),
+            "outcome_prices": (statuses.get(i) or {}).get("outcome_prices"),
+        }
+        for i in open_ids if _is_resolved(statuses.get(i))
+    }
+    resolved = db.mark_resolved(resolutions)
 
     return {
         "fetched": len(candidates),
