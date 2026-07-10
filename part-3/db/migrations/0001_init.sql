@@ -1,15 +1,18 @@
--- Schema for the relational + vector store (one Postgres, pgvector extension).
---
--- Loaded automatically by the postgres container on first start (mounted into
--- /docker-entrypoint-initdb.d/). Holds two things the worker touches:
+-- 0001 — baseline schema for the relational + vector store (one Postgres,
+-- pgvector extension). Applied by db/migrate.py (the `migrate` service), not by
+-- the postgres container's initdb hook. Holds two things the worker touches:
 --   markets        — current market state + its embedding (vector search target)
 --   belief_updates — append-only audit history of every re-evaluation
 --
 -- The `markets` table is kept in sync with Polymarket by the market-syncer
 -- service (services/syncer/), which fetches, embeds, and marks resolved markets
--- closed (rows are retained for scoring, not deleted). This
--- file only creates the structure. `db/seed_markets.py` inserts a couple of
--- fixtures for a quick worker smoke-test without running the syncer.
+-- closed (rows are retained for scoring, not deleted).
+--
+-- This is the baseline: it recreates the full current schema on a fresh DB, and
+-- is a safe no-op (IF NOT EXISTS guards) against a DB already at this shape.
+-- Later changes go in new numbered files — never edit an applied migration.
+-- `db/seed_markets.py` inserts a couple of fixtures for a quick worker
+-- smoke-test without running the syncer.
 
 CREATE EXTENSION IF NOT EXISTS vector;
 

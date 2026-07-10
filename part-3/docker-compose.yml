@@ -47,13 +47,26 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
-      # schema is applied once, on first start of an empty data volume
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Schema is NOT applied here anymore: initdb scripts run only on a fresh
+      # volume, so they couldn't evolve an existing DB. The `migrate` service
+      # below applies db/migrations/ against the live DB on every startup.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pm -d pm"]
       interval: 5s
       timeout: 3s
       retries: 5
+
+  migrate:       # ONE-SHOT: applies db/migrations/ then exits (0 = success)
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://pm:pm@postgres:5432/pm
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # No restart: this runs to completion once per `up`; worker/syncer wait on it.
+    restart: "no"
 
   worker:        # SCALABLE: docker compose up --scale worker=3
     build:
@@ -70,6 +83,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     volumes:
       - audit_logs:/data
@@ -86,6 +101,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     # SINGLETON — more than one syncer = duplicate Gamma fetches. Do not scale.
     deploy:

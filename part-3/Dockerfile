@@ -29,4 +29,11 @@ FROM base AS syncer
 COPY services/syncer/ ./services/syncer/
 CMD ["python", "-m", "services.syncer.main"]
 
+# ---- migrate (one-shot: applies db/migrations/ then exits) ----
+# Runs before worker/syncer start (see the `migrate` service in compose). Needs
+# only psycopg (from base) + the SQL files; no lib/ or service code.
+FROM base AS migrate
+COPY db/ ./db/
+CMD ["python", "db/migrate.py"]
+
 # ---- signal stage will be added here as we build it ----

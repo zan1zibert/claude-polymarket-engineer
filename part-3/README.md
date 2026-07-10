@@ -44,6 +44,20 @@ stubbed in the compose file.
 `db/seed_markets.py` remains as a quick fixture loader for smoke-testing the
 worker without running the syncer.
 
+### Schema changes
+
+The schema lives in `db/migrations/` as numbered, forward-only SQL files. The
+one-shot `migrate` service applies any unapplied ones against the live database
+on every `docker compose up` (worker and syncer wait for it to finish), so
+schema changes never require wiping the `pg_data` volume. To change the schema,
+add a new file with the next number — e.g. `db/migrations/0004_add_positions.sql`
+— and bring the stack up; never edit a migration that has already been applied.
+Run it by hand against a running DB with:
+
+```sh
+docker compose run --rm migrate
+```
+
 ## Run the worker
 
 ```sh
@@ -151,7 +165,7 @@ services/feeder/    the RSS poller (producer)
 services/worker/    the market analyzer (consumer, scalable)
 services/syncer/    the market ingestion service (singleton)
 prompts/            worker system + re-eval prompt templates
-db/                 init.sql (schema) + seed_markets.py (dev fixtures)
+db/                 migrations/ (versioned schema) + migrate.py (runner) + seed_markets.py (dev fixtures)
 Dockerfile          multi-stage: base + per-service targets
 docker-compose.yml  local stack
 ```
