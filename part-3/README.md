@@ -58,6 +58,18 @@ Run it by hand against a running DB with:
 docker compose run --rm migrate
 ```
 
+### Tests
+
+```sh
+pip install -r requirements.txt -r requirements-dev.txt
+pytest                                                    # unit tests
+TEST_DATABASE_URL=postgresql://pm:pm@localhost:5432/pm pytest   # + DB integration tests
+```
+
+Pure-logic tests (e.g. the Gamma price parsers) always run. Tests that need
+Postgres are skipped unless `TEST_DATABASE_URL` points at a reachable DB, so a
+bare `pytest` stays green with no infrastructure.
+
 ## Run the worker
 
 ```sh
