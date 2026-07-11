@@ -29,6 +29,7 @@ class Settings:
     max_cosine_distance: float   # relevance gate; matches beyond this are dropped
     audit_log_path: str          # append-only JSONL of every belief update
     worker_use_web_search: bool  # worker already has the article; off by default
+    belief_move_epsilon: float   # min |new-prev| score move to count a re-eval as "moving" the belief
 
     # --- market-syncer (ingestion) ---
     gamma_markets_url: str
@@ -70,6 +71,7 @@ def load_settings() -> Settings:
         audit_log_path=os.environ.get("AUDIT_LOG_PATH", "outputs/belief_updates.jsonl"),
         worker_use_web_search=os.environ.get("WORKER_USE_WEB_SEARCH", "false").lower()
         in ("1", "true", "yes"),
+        belief_move_epsilon=float(os.environ.get("BELIEF_MOVE_EPSILON", "0.02")),
         gamma_markets_url=os.environ.get(
             "GAMMA_MARKETS_URL", "https://gamma-api.polymarket.com/markets"
         ),
