@@ -39,6 +39,7 @@ class Settings:
     sync_min_volume_24h: float       # ingestion liquidity/volume gates
     sync_min_liquidity: float
     sync_price_band: tuple[float, float]  # drop near-resolved (0/1) markets
+    price_change_epsilon: float      # min YES-price move to record a new price-series point
 
 
 def load_settings() -> Settings:
@@ -82,4 +83,5 @@ def load_settings() -> Settings:
             float(os.environ.get("SYNC_PRICE_BAND_LOW", "0.05")),
             float(os.environ.get("SYNC_PRICE_BAND_HIGH", "0.95")),
         ),
+        price_change_epsilon=float(os.environ.get("PRICE_CHANGE_EPSILON", "0.005")),
     )

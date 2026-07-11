@@ -8,6 +8,7 @@ Operations the market-syncer needs (services/syncer/):
   - existing_market_ids     : which of these ids do we already store?
   - insert_markets          : add new markets (score seeded from Polymarket price)
   - refresh_market_metadata : refresh volatile fields, leaving belief + embedding
+  - record_prices           : append current YES-price observations (the price series)
   - open_market_ids         : every market still open — the resolution check set
   - mark_resolved           : flag resolved markets closed (rows kept for scoring)
 
@@ -157,6 +158,52 @@ class Db:
                 )
                 inserted += cur.rowcount
         return inserted
+
+    def record_prices(
+        self, rows: list[tuple[str, float]], *, min_change: float = 0.0
+    ) -> int:
+        """Append current YES-price observations for open markets to market_prices.
+
+        `rows` is (market_id, yes_price) pairs. Dedupe-on-change: an observation is
+        written only if it differs from that market's most recent stored price by at
+        least `min_change` (a market with no prior row is always written). This keeps
+        the series meaningful — a row means "the price moved" — and stops flat,
+        illiquid markets from filling the table with identical points. All rows in a
+        cycle share one transaction timestamp, so they read as a coherent snapshot.
+        Returns the number of observations written.
+        """
+        if not rows:
+            return 0
+
+        ids = [r[0] for r in rows]
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ON (market_id) market_id, yes_price
+                FROM market_prices
+                WHERE market_id = ANY(%s)
+                ORDER BY market_id, ts DESC
+                """,
+                (ids,),
+            )
+            last = {r[0]: r[1] for r in cur.fetchall()}
+
+        to_write = [
+            (mid, price)
+            for mid, price in rows
+            if mid not in last or abs(price - last[mid]) >= min_change
+        ]
+        if not to_write:
+            return 0
+
+        # One transaction → now() is constant across the batch, so every row in this
+        # cycle carries the same ts (a coherent price snapshot).
+        with self._conn.transaction(), self._conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO market_prices (market_id, yes_price) VALUES (%s, %s)",
+                to_write,
+            )
+        return len(to_write)
 
     def open_market_ids(self) -> list[str]:
         """Ids of every market still open — the set we re-check against Gamma.

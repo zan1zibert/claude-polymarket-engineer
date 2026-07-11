@@ -81,6 +81,9 @@ SYNCER_MARKETS_INSERTED = Counter(
 SYNCER_MARKETS_RESOLVED = Counter(
     "syncer_markets_resolved_total", "Markets marked resolved"
 )
+SYNCER_PRICES_RECORDED = Counter(
+    "syncer_prices_recorded_total", "Price-series observations written (changed prices only)"
+)
 
 
 def start_metrics_server(port: int) -> None:

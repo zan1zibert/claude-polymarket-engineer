@@ -53,6 +53,24 @@ def resolved_yes_price(market: dict) -> Optional[float]:
     return None
 
 
+def current_yes_price(market: dict) -> Optional[float]:
+    """Live YES price (0..1) for a binary market, or None if non-binary/unparseable.
+
+    Unlike `resolved_yes_price`, this returns the raw current price rather than a
+    settled 0/1 — it's the observation the syncer appends to the price series for
+    still-open markets."""
+    outcomes = _parse_json_field(market.get("outcomes"), [])
+    prices = _parse_json_field(market.get("outcomePrices"), [])
+    if len(outcomes) != 2 or len(prices) != 2:
+        return None
+    try:
+        price_map = {o.lower(): float(p) for o, p in zip(outcomes, prices)}
+    except (TypeError, ValueError):
+        return None
+    yes = price_map.get("yes")
+    return round(yes, 4) if yes is not None else None
+
+
 def normalize(market: dict) -> Optional[dict]:
     """Flatten a Gamma payload into the fields we store. None if non-binary/unusable."""
     outcomes = _parse_json_field(market.get("outcomes"), [])
@@ -129,10 +147,12 @@ def fetch_statuses(
     ids: list[str],
     url: str = GAMMA_MARKETS_URL
 ) -> dict[str, dict]:
-    """Current {closed, end_date, resolved_outcome} per id we still store, for the resolve step.
+    """Current {closed, end_date, resolved_outcome, yes_price} per id we still store.
 
-    Queried in chunks to keep the URL short. Ids Gamma no longer returns are
-    simply absent from the result; the caller treats "missing" as resolved.
+    Feeds both the resolve step (closed/end_date/resolved_outcome) and the price
+    series (yes_price — the live YES price for markets still open). Queried in
+    chunks to keep the URL short. Ids Gamma no longer returns are simply absent
+    from the result; the caller treats "missing" as resolved.
     """
     statuses: dict[str, dict] = {}
     for start in range(0, len(ids), _STATUS_CHUNK):
@@ -147,5 +167,6 @@ def fetch_statuses(
                 "closed": bool(m.get("closed")),
                 "end_date": m.get("endDate"),
                 "resolved_outcome": resolved_yes_price(m),
+                "yes_price": current_yes_price(m),
             }
     return statuses

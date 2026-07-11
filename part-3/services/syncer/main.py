@@ -106,10 +106,23 @@ def sync_once(
     }
     resolved = db.mark_resolved(outcomes)
 
+    # Append a price-series point for every market that is still open this cycle
+    # (i.e. not being resolved) and reported a live YES price. record_prices skips
+    # unchanged prices, so this is append-on-change only.
+    prices = [
+        (i, statuses[i]["yes_price"])
+        for i in open_ids
+        if i not in outcomes
+        and statuses.get(i)
+        and statuses[i].get("yes_price") is not None
+    ]
+    recorded = db.record_prices(prices, min_change=settings.price_change_epsilon)
+
     return {
         "fetched": len(candidates),
         "inserted": inserted,
         "resolved": resolved,
+        "recorded": recorded,
     }
 
 
@@ -160,9 +173,10 @@ def run(once: bool = False) -> None:
                 metrics.SYNCER_MARKETS_FETCHED.inc(c["fetched"])
                 metrics.SYNCER_MARKETS_INSERTED.inc(c["inserted"])
                 metrics.SYNCER_MARKETS_RESOLVED.inc(c["resolved"])
+                metrics.SYNCER_PRICES_RECORDED.inc(c["recorded"])
                 log.info(
-                    "synced: %d candidates, +%d new, %d resolved",
-                    c["fetched"], c["inserted"], c["resolved"],
+                    "synced: %d candidates, +%d new, %d resolved, %d prices",
+                    c["fetched"], c["inserted"], c["resolved"], c["recorded"],
                 )
             except Exception:
                 log.exception("sync cycle failed")
