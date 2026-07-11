@@ -94,17 +94,26 @@ def process_article(
                 use_web_search=settings.worker_use_web_search,
             )
         if "error" in result or "probability" not in result:
-            metrics.WORKER_REEVAL_FAILURES.inc()
+            metrics.WORKER_REEVAL_FAILURES.labels(source=src).inc()
             log.warning("eval failed for market %s: %s", market.id, result.get("error", result))
             continue
 
-        metrics.WORKER_MARKETS_REEVALUATED.inc()
+        metrics.WORKER_MARKETS_REEVALUATED.labels(source=src).inc()
         new_score = float(result["probability"])
         reasoning = result.get("reasoning", "")
         update = db.apply_belief_update(market.id, new_score, article.url, reasoning)
 
         belief_queue.push(update)
         metrics.WORKER_BELIEF_UPDATES.labels(source=src).inc()
+        # Did this re-eval actually shift the belief? A first eval (no prior) counts
+        # as a move — it establishes a belief. This separates informative sources
+        # from ones whose news matches markets but never changes the score.
+        moved = (
+            update.previous_score is None
+            or abs(update.new_score - update.previous_score) >= settings.belief_move_epsilon
+        )
+        if moved:
+            metrics.WORKER_BELIEF_MOVED.labels(source=src).inc()
         _audit(settings.audit_log_path, update)
         prev = "—" if update.previous_score is None else f"{update.previous_score:.2f}"
         log.info(

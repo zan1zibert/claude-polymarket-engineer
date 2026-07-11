@@ -49,13 +49,21 @@ WORKER_MARKETS_MATCHED = Counter(
     ["source"],
 )
 WORKER_MARKETS_REEVALUATED = Counter(
-    "worker_markets_reevaluated_total", "Markets successfully re-evaluated by Claude"
+    "worker_markets_reevaluated_total", "Markets successfully re-evaluated by Claude",
+    ["source"],
 )
 WORKER_REEVAL_FAILURES = Counter(
-    "worker_reeval_failures_total", "Claude re-evaluations that errored or failed to parse"
+    "worker_reeval_failures_total", "Claude re-evaluations that errored or failed to parse",
+    ["source"],
 )
 WORKER_BELIEF_UPDATES = Counter(
     "worker_belief_updates_total", "Belief updates produced and pushed downstream",
+    ["source"],
+)
+WORKER_BELIEF_MOVED = Counter(
+    "worker_belief_moved_total",
+    "Re-evaluations that moved the belief by at least belief_move_epsilon "
+    "(the signal, as opposed to re-evals that left the score flat)",
     ["source"],
 )
 CLAUDE_REEVAL_DURATION = Histogram(
