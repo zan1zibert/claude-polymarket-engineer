@@ -340,6 +340,122 @@
           }
         }
       ]
+    },
+    {
+      "id": 15,
+      "title": "Market corpus health",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 52 },
+      "panels": []
+    },
+    {
+      "id": 16,
+      "title": "Open markets",
+      "description": "Live retrieval corpus right now (NOT closed). The headline number — a slow decline (resolves outpacing inserts) or a flat line during a stall both show here first.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 53 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "blue" } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(syncer_open_markets)", "legendFormat": "open" }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Time since last sync",
+      "description": "Staleness = now - last completed sync. A dead syncer reads the same as a quiet one on the rate panels; this is the panel that tells them apart. Thresholds assume the daily (86400s) default — retune to your SYNC_INTERVAL_SECONDS (yellow ≈ 1 missed cycle, red ≈ 2).",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 53 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 90000 },
+            { "color": "red", "value": 180000 }
+          ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "time() - max(syncer_last_sync_timestamp_seconds)", "legendFormat": "staleness" }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "Awaiting outcome",
+      "description": "Closed markets with no resolved_outcome — resolved but ungradeable, the scorer's dead-letter set. Nothing backfills it, so sustained growth is a signal (Gamma stopped returning determinable outcomes), not a transient.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 53 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 10 },
+            { "color": "red", "value": 50 }
+          ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(syncer_awaiting_outcome)", "legendFormat": "awaiting" }
+      ]
+    },
+    {
+      "id": 19,
+      "title": "Closed markets",
+      "description": "Resolved markets, retained for scoring (never deleted). Grows monotonically over the corpus lifetime.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 53 },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "purple" } }, "overrides": [] },
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(syncer_closed_markets)", "legendFormat": "closed" }
+      ]
+    },
+    {
+      "id": 20,
+      "title": "Corpus size over time",
+      "description": "Open vs closed vs awaiting-outcome as levels. Watch the open line for drift; watch awaiting-outcome for a creeping floor.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 61 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(syncer_open_markets)", "legendFormat": "open" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(syncer_closed_markets)", "legendFormat": "closed" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(syncer_awaiting_outcome)", "legendFormat": "awaiting outcome" }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Corpus flow (per hour)",
+      "description": "Inserted vs resolved per hour — the two forces on the open-market level. Inserted above resolved = corpus growing; below = shrinking. This is the readable form of the events/sec rates in the syncer-activity panel above.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 61 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(syncer_markets_inserted_total[1h])) * 3600", "legendFormat": "inserted/hr" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(syncer_markets_resolved_total[1h])) * 3600", "legendFormat": "resolved/hr" }
+      ]
     }
   ]
 }

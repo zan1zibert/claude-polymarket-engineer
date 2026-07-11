@@ -92,6 +92,27 @@ SYNCER_MARKETS_RESOLVED = Counter(
 SYNCER_PRICES_RECORDED = Counter(
     "syncer_prices_recorded_total", "Price-series observations written (changed prices only)"
 )
+# Corpus state — gauges the syncer OVERWRITES each cycle from a COUNT (a level,
+# not a rate), mirroring the scorer's forecast_* gauges. These answer "how big is
+# the live market set right now", which the syncer_*_total counters (flows) can't.
+SYNCER_OPEN_MARKETS = Gauge(
+    "syncer_open_markets", "Markets currently open (NOT closed) — the retrieval corpus"
+)
+SYNCER_CLOSED_MARKETS = Gauge(
+    "syncer_closed_markets", "Markets marked resolved/closed (retained for scoring)"
+)
+SYNCER_AWAITING_OUTCOME = Gauge(
+    "syncer_awaiting_outcome",
+    "Closed markets with no resolved_outcome — resolved but ungradeable; only "
+    "drains if a later pass backfills the outcome, so treat sustained growth as "
+    "a signal, not a leak",
+)
+# Unix timestamp of the last successful sync cycle. Panel it as `time() - metric`
+# to get a staleness gauge — the one alarm the rate panels can't raise, since a
+# dead syncer and a quiet one both read as zero throughput.
+SYNCER_LAST_SYNC_TIMESTAMP = Gauge(
+    "syncer_last_sync_timestamp_seconds", "Unix time of the last completed sync cycle"
+)
 
 
 def start_metrics_server(port: int) -> None:

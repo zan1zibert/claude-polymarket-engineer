@@ -218,6 +218,26 @@ class Db:
             cur.execute("SELECT id FROM markets WHERE NOT closed")
             return [r[0] for r in cur.fetchall()]
 
+    def corpus_counts(self) -> dict[str, int]:
+        """Snapshot of the market corpus: open, closed, and awaiting-outcome counts.
+
+        One grouped scan over `markets` for the syncer's state gauges. `awaiting`
+        is the closed-but-ungradeable set (resolved_outcome IS NULL) that the
+        scorer can never grade — worth watching, since nothing backfills it.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    count(*) FILTER (WHERE NOT closed)                             AS open,
+                    count(*) FILTER (WHERE closed)                                 AS closed,
+                    count(*) FILTER (WHERE closed AND resolved_outcome IS NULL)    AS awaiting
+                FROM markets
+                """
+            )
+            row = cur.fetchone()
+        return {"open": row[0], "closed": row[1], "awaiting": row[2]}
+
     def mark_resolved(self, outcomes: dict[str, Optional[float]]) -> int:
         """Flag resolved markets closed and store their outcome, preserving the row.
 

@@ -174,6 +174,13 @@ def run(once: bool = False) -> None:
                 metrics.SYNCER_MARKETS_INSERTED.inc(c["inserted"])
                 metrics.SYNCER_MARKETS_RESOLVED.inc(c["resolved"])
                 metrics.SYNCER_PRICES_RECORDED.inc(c["recorded"])
+                # Overwrite the corpus-state gauges from a fresh COUNT and stamp
+                # the liveness clock — both reflect the DB after this cycle's writes.
+                counts = db.corpus_counts()
+                metrics.SYNCER_OPEN_MARKETS.set(counts["open"])
+                metrics.SYNCER_CLOSED_MARKETS.set(counts["closed"])
+                metrics.SYNCER_AWAITING_OUTCOME.set(counts["awaiting"])
+                metrics.SYNCER_LAST_SYNC_TIMESTAMP.set(time.time())
                 log.info(
                     "synced: %d candidates, +%d new, %d resolved, %d prices",
                     c["fetched"], c["inserted"], c["resolved"], c["recorded"],
