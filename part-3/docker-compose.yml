@@ -108,7 +108,24 @@ services:
     deploy:
       replicas: 1
 
-  prometheus:    # scrapes /metrics from feeder/worker/syncer over the internal network
+  scorer:        # SINGLETON: grades resolved markets (closes the loop)
+    build:
+      context: .
+      target: scorer
+    environment:
+      DATABASE_URL: postgresql://pm:pm@postgres:5432/pm
+      SCORER_INTERVAL_SECONDS: ${SCORER_INTERVAL_SECONDS:-3600}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # SINGLETON — scoring is idempotent, so a second instance just duplicates work.
+    deploy:
+      replicas: 1
+
+  prometheus:    # scrapes /metrics from feeder/worker/syncer/scorer over the internal network
     image: prom/prometheus:latest
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -123,6 +140,7 @@ services:
       - feeder
       - worker
       - syncer
+      - scorer
     restart: unless-stopped
 
   grafana:       # dashboards; datasource + Pipeline dashboard are provisioned on startup

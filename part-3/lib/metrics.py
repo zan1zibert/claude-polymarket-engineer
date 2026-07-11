@@ -85,6 +85,33 @@ SYNCER_PRICES_RECORDED = Counter(
     "syncer_prices_recorded_total", "Price-series observations written (changed prices only)"
 )
 
+# --- scorer ---
+# One monotonic counter for the event (markets graded), and a set of gauges that
+# the scorer OVERWRITES each cycle from aggregate SQL. Gauges (not counters)
+# because these are a snapshot of the whole scored corpus — a mean, not a rate.
+SCORER_MARKETS_SCORED = Counter(
+    "scorer_markets_scored_total", "Resolved markets graded and written to forecast_scores"
+)
+FORECAST_BRIER_MEAN = Gauge(
+    "forecast_brier_mean", "Mean Brier score of our belief over all scored markets"
+)
+FORECAST_LOGLOSS_MEAN = Gauge(
+    "forecast_logloss_mean", "Mean log loss of our belief over all scored markets"
+)
+FORECAST_BRIER_BASELINE_MEAN = Gauge(
+    "forecast_brier_baseline_mean", "Mean Brier score of the market-at-ingest baseline"
+)
+FORECAST_LOGLOSS_BASELINE_MEAN = Gauge(
+    "forecast_logloss_baseline_mean", "Mean log loss of the market-at-ingest baseline"
+)
+FORECAST_BRIER_SKILL = Gauge(
+    "forecast_brier_skill",
+    "Brier skill vs the market baseline (1 - belief/baseline; >0 = beating the market)",
+)
+FORECAST_SCORED_MARKETS = Gauge(
+    "forecast_scored_markets", "Total markets graded so far (rows in forecast_scores)"
+)
+
 
 def start_metrics_server(port: int) -> None:
     """Expose /metrics on `port` in a background daemon thread.

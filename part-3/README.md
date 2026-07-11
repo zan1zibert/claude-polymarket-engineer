@@ -35,11 +35,16 @@ service, selected via `target:` in `docker-compose.yml`.
   "current score" it updates is *our own* prior belief, stored in Postgres. Only
   the (future) `signal` service compares against price.
 
+- **scorer** — once a market resolves, grades our final belief (and the market's
+  ingest price as a baseline) against the outcome with Brier + log-loss, and
+  publishes the "are we beating the market?" skill score. *Closes the loop.
+  Singleton.*
+
 ## What's built so far
 
 The **feeder**, **Redis**, **Postgres + pgvector**, the **worker** (market
-analyzer), and the **syncer** (market ingestion). The `signal` service is still
-stubbed in the compose file.
+analyzer), the **syncer** (market ingestion), and the **scorer** (grades resolved
+markets). The `signal` service is still stubbed in the compose file.
 
 `db/seed_markets.py` remains as a quick fixture loader for smoke-testing the
 worker without running the syncer.
@@ -160,6 +165,48 @@ from retrieval, but the row and its `belief_updates` history are kept so a later
 pass can score our predictions against the outcome. The check is cheap because it
 queries only our own open markets (a few hundred), not Polymarket's full list.
 
+## Run the scorer
+
+The scorer grades markets the syncer has already resolved (`resolved_outcome`
+set). It has no external API calls — just Postgres — so it runs standalone:
+
+```sh
+cd part-3
+docker compose up --build scorer     # starts postgres + migrate + scorer
+docker compose logs -f scorer        # watch "scored: +N graded, brier skill vs market +0.037"
+```
+
+One cycle on the host (needs `DATABASE_URL`):
+
+```sh
+pip install -r requirements.txt
+python -m services.scorer.main --once   # grade all resolved-unscored markets, then exit
+python -m services.scorer.main          # score forever (default hourly)
+```
+
+Inspect the scoreboard (Brier: 0 = perfect, 0.25 = a coin flip; skill > 0 = we
+beat the market baseline):
+
+```sh
+docker compose exec postgres psql -U pm -d pm -c \
+  'SELECT market_id, outcome, final_belief, seed_price, n_updates,
+          round(brier_belief::numeric, 4)   AS brier_us,
+          round(brier_baseline::numeric, 4) AS brier_mkt
+   FROM forecast_scores ORDER BY scored_at DESC LIMIT 10;'
+
+# headline skill score across everything graded so far
+docker compose exec postgres psql -U pm -d pm -c \
+  'SELECT round((1 - avg(brier_belief)/avg(brier_baseline))::numeric, 4) AS brier_skill,
+          count(*) FROM forecast_scores WHERE brier_baseline IS NOT NULL;'
+```
+
+The same numbers are exposed to Prometheus as `forecast_brier_mean`,
+`forecast_brier_baseline_mean`, and `forecast_brier_skill` (refreshed each cycle).
+
+`scored_at` records when we graded a market, not when it resolved; scoring is
+idempotent (one row per market, keyed by `market_id`), so re-running is a no-op
+for markets already in `forecast_scores`.
+
 ## Layout
 
 ```
@@ -171,11 +218,13 @@ lib/                shared, importable package
   dedup.py          atomic Redis URL de-duplication
   embeddings.py     Voyage embedder (query side + document side)
   polymarket.py     Gamma API client (fetch fresh markets + resolution status)
-  db.py             Postgres + pgvector access (top-k, score swap, sync, resolve)
+  db.py             Postgres + pgvector access (top-k, score swap, sync, resolve, score)
+  scoring.py        pure Brier / log-loss / skill / reliability-bin functions
   claude.py         price-blind re-evaluation call
 services/feeder/    the RSS poller (producer)
 services/worker/    the market analyzer (consumer, scalable)
 services/syncer/    the market ingestion service (singleton)
+services/scorer/    grades resolved markets against the outcome (singleton)
 prompts/            worker system + re-eval prompt templates
 db/                 migrations/ (versioned schema) + migrate.py (runner) + seed_markets.py (dev fixtures)
 Dockerfile          multi-stage: base + per-service targets
