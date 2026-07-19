@@ -42,6 +42,9 @@ class Settings:
     sync_price_band: tuple[float, float]  # drop near-resolved (0/1) markets
     price_change_epsilon: float      # min YES-price move to record a new price-series point
 
+    # --- scorer (grades resolved markets) ---
+    scorer_interval_seconds: int     # how often to grade newly-resolved markets
+
 
 def load_settings() -> Settings:
     return Settings(
@@ -86,4 +89,7 @@ def load_settings() -> Settings:
             float(os.environ.get("SYNC_PRICE_BAND_HIGH", "0.95")),
         ),
         price_change_epsilon=float(os.environ.get("PRICE_CHANGE_EPSILON", "0.005")),
+        # Hourly by default: markets resolve on the order of days, and scoring is
+        # cheap and idempotent, so a tight loop just re-checks an empty work queue.
+        scorer_interval_seconds=int(os.environ.get("SCORER_INTERVAL_SECONDS", "3600")),
     )

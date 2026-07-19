@@ -29,6 +29,11 @@ FROM base AS syncer
 COPY services/syncer/ ./services/syncer/
 CMD ["python", "-m", "services.syncer.main"]
 
+# ---- scorer (singleton: grades resolved markets) ----
+FROM base AS scorer
+COPY services/scorer/ ./services/scorer/
+CMD ["python", "-m", "services.scorer.main"]
+
 # ---- migrate (one-shot: applies db/migrations/ then exits) ----
 # Runs before worker/syncer start (see the `migrate` service in compose). Needs
 # only psycopg (from base) + the SQL files; no lib/ or service code.
