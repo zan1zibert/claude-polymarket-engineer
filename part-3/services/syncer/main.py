@@ -106,6 +106,22 @@ def sync_once(
     }
     resolved = db.mark_resolved(outcomes)
 
+    # Re-check markets we closed on end_date that Gamma hadn't settled yet (closed
+    # with resolved_outcome NULL — the "awaiting outcome" set). Once Polymarket
+    # reports a definitive 1.0/0.0, backfill it; unsettled ones are left for a later
+    # cycle. Without this pass such markets would stay ungradeable forever, since
+    # open_market_ids only re-checks open markets.
+    awaiting_ids = db.awaiting_market_ids()
+    if awaiting_ids:
+        awaiting_statuses = polymarket.fetch_statuses(
+            client, awaiting_ids, url=settings.gamma_markets_url
+        )
+        backfilled = db.backfill_outcomes(
+            {i: (awaiting_statuses.get(i) or {}).get("resolved_outcome") for i in awaiting_ids}
+        )
+    else:
+        backfilled = 0
+
     # Append a price-series point for every market that is still open this cycle
     # (i.e. not being resolved) and reported a live YES price. record_prices skips
     # unchanged prices, so this is append-on-change only.
@@ -122,6 +138,7 @@ def sync_once(
         "fetched": len(candidates),
         "inserted": inserted,
         "resolved": resolved,
+        "backfilled": backfilled,
         "recorded": recorded,
     }
 
@@ -173,6 +190,7 @@ def run(once: bool = False) -> None:
                 metrics.SYNCER_MARKETS_FETCHED.inc(c["fetched"])
                 metrics.SYNCER_MARKETS_INSERTED.inc(c["inserted"])
                 metrics.SYNCER_MARKETS_RESOLVED.inc(c["resolved"])
+                metrics.SYNCER_OUTCOMES_BACKFILLED.inc(c["backfilled"])
                 metrics.SYNCER_PRICES_RECORDED.inc(c["recorded"])
                 # Overwrite the corpus-state gauges from a fresh COUNT and stamp
                 # the liveness clock — both reflect the DB after this cycle's writes.
@@ -182,8 +200,8 @@ def run(once: bool = False) -> None:
                 metrics.SYNCER_AWAITING_OUTCOME.set(counts["awaiting"])
                 metrics.SYNCER_LAST_SYNC_TIMESTAMP.set(time.time())
                 log.info(
-                    "synced: %d candidates, +%d new, %d resolved, %d prices",
-                    c["fetched"], c["inserted"], c["resolved"], c["recorded"],
+                    "synced: %d candidates, +%d new, %d resolved, %d backfilled, %d prices",
+                    c["fetched"], c["inserted"], c["resolved"], c["backfilled"], c["recorded"],
                 )
             except Exception:
                 log.exception("sync cycle failed")

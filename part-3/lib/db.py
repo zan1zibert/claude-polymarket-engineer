@@ -218,6 +218,20 @@ class Db:
             cur.execute("SELECT id FROM markets WHERE NOT closed")
             return [r[0] for r in cur.fetchall()]
 
+    def awaiting_market_ids(self) -> list[str]:
+        """Ids of markets closed on end_date but not yet settled (resolved_outcome
+        IS NULL) — the set we keep re-checking against Gamma so their outcome can be
+        backfilled once Polymarket settles them. Without this, a market whose end_date
+        passes before its result is official would be closed with a NULL outcome and
+        never looked at again (open_market_ids filters WHERE NOT closed), leaving it
+        stuck awaiting-outcome forever.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM markets WHERE closed AND resolved_outcome IS NULL"
+            )
+            return [r[0] for r in cur.fetchall()]
+
     def corpus_counts(self) -> dict[str, int]:
         """Snapshot of the market corpus: open, closed, and awaiting-outcome counts.
 
@@ -264,3 +278,30 @@ class Db:
                 )
                 resolved += cur.rowcount
         return resolved
+
+    def backfill_outcomes(self, outcomes: dict[str, Optional[float]]) -> int:
+        """Fill in the outcome of already-closed markets once Gamma settles them.
+
+        Counterpart to `mark_resolved` for the awaiting-outcome set: a market closed
+        on end_date before its result was official sits with resolved_outcome IS NULL
+        until Polymarket settles it. `outcomes` maps market_id -> resolved_outcome;
+        entries whose value is still None (not yet settled) are skipped, so we only
+        write a definitive 1.0/0.0. Guarded so we never overwrite an outcome already
+        graded. Returns the number of markets newly backfilled.
+        """
+        pending = {i: o for i, o in outcomes.items() if o is not None}
+        if not pending:
+            return 0
+        filled = 0
+        with self._conn.cursor() as cur:
+            for market_id, outcome in pending.items():
+                cur.execute(
+                    """
+                    UPDATE markets
+                       SET resolved_outcome = %s, resolved_at = now(), updated_at = now()
+                     WHERE id = %s AND closed AND resolved_outcome IS NULL
+                    """,
+                    (outcome, market_id),
+                )
+                filled += cur.rowcount
+        return filled

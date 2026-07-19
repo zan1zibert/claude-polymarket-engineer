@@ -89,6 +89,10 @@ SYNCER_MARKETS_INSERTED = Counter(
 SYNCER_MARKETS_RESOLVED = Counter(
     "syncer_markets_resolved_total", "Markets marked resolved"
 )
+SYNCER_OUTCOMES_BACKFILLED = Counter(
+    "syncer_outcomes_backfilled_total",
+    "Awaiting-outcome markets whose outcome was backfilled once Gamma settled them",
+)
 SYNCER_PRICES_RECORDED = Counter(
     "syncer_prices_recorded_total", "Price-series observations written (changed prices only)"
 )
@@ -103,9 +107,10 @@ SYNCER_CLOSED_MARKETS = Gauge(
 )
 SYNCER_AWAITING_OUTCOME = Gauge(
     "syncer_awaiting_outcome",
-    "Closed markets with no resolved_outcome — resolved but ungradeable; only "
-    "drains if a later pass backfills the outcome, so treat sustained growth as "
-    "a signal, not a leak",
+    "Closed markets with no resolved_outcome — resolved but not yet gradeable. "
+    "The syncer re-checks these each cycle and backfills once Gamma settles them "
+    "(see syncer_outcomes_backfilled_total), so sustained growth means Polymarket "
+    "is slow to settle, not a leak",
 )
 # Unix timestamp of the last successful sync cycle. Panel it as `time() - metric`
 # to get a staleness gauge — the one alarm the rate panels can't raise, since a
