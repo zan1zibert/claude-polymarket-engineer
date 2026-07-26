@@ -70,3 +70,6 @@ services:
       # No dev fallback in prod: force a real admin password from .env. Grafana
       # still binds to 127.0.0.1 only (base file) — reach it via an SSH tunnel.
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:?set GF_SECURITY_ADMIN_PASSWORD in .env}
+      # Override the base file's pm/pm default so the provisioned Postgres
+      # datasource authenticates with the real password too.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}

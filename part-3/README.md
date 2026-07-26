@@ -207,6 +207,31 @@ The same numbers are exposed to Prometheus as `forecast_brier_mean`,
 idempotent (one row per market, keyed by `market_id`), so re-running is a no-op
 for markets already in `forecast_scores`.
 
+## Dashboards
+
+Two Grafana dashboards, split by audience rather than by service:
+
+- **Pipeline** (`pipeline.json`) — is the machine running? Queue depth,
+  throughput, token spend, per-feed conversion, sync/corpus health. Ops-facing,
+  10s refresh.
+- **Forecast Accuracy** (`accuracy.json`) — is the machine *good*? The
+  aggregate Brier/log-loss/skill gauges, plus a **market-detail** panel: pick
+  any resolved market from the dropdown and see our belief, the market's own
+  price, and the eventual outcome overlaid over that market's lifetime. Both
+  price series always converge to the outcome eventually — the market is a
+  martingale, so that part's guaranteed. What the chart actually answers is
+  whether our belief gets there *first*.
+
+The market-detail panel queries Postgres directly (`markets`, `belief_updates`,
+`market_prices`) rather than Prometheus — per-market series are exactly the kind
+of high-cardinality data Prometheus isn't for, and Postgres already keeps this
+history forever. That's a second provisioned datasource
+(`monitoring/grafana/provisioning/datasources/postgres.yml`), reading
+`POSTGRES_PASSWORD` from the environment the same way the other services do.
+
+Both dashboards are provisioned automatically — nothing to click through, just
+`docker compose up` and open http://127.0.0.1:3000 (or tunnel to it in prod).
+
 ## Layout
 
 ```

@@ -1,0 +1,29 @@
+# Provisioned Postgres datasource — lets Grafana query markets/belief_updates/
+# market_prices/forecast_scores directly.
+#
+# These are per-market, high-cardinality time series (one row per price change,
+# per belief update, across hundreds of markets) that do NOT belong in
+# Prometheus — Prometheus is for the aggregate gauges (forecast_brier_mean etc.)
+# scraped from the scorer. Postgres already stores this history forever, so
+# dashboards that need "this one market's trajectory" query it directly.
+#
+# The password is injected via $__env{...} (Grafana's provisioning env-var
+# expansion) from POSTGRES_PASSWORD, which docker-compose.yml sets on this
+# container (pm/pm in dev; the real secret in prod via docker-compose.prod.yml).
+apiVersion: 1
+
+datasources:
+  - name: Postgres
+    uid: postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: pm
+    user: pm
+    isDefault: false
+    editable: false
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+    secureJsonData:
+      password: $__env{POSTGRES_PASSWORD}

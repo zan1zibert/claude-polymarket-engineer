@@ -1,0 +1,281 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["polymarket", "accuracy"],
+  "templating": {
+    "list": [
+      {
+        "name": "market_id",
+        "label": "Market",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "postgres" },
+        "definition": "SELECT id AS __value, question || '  [' || to_char(resolved_at, 'YYYY-MM-DD') || ']' AS __text FROM markets WHERE closed AND resolved_outcome IS NOT NULL ORDER BY resolved_at DESC LIMIT 200",
+        "query": "SELECT id AS __value, question || '  [' || to_char(resolved_at, 'YYYY-MM-DD') || ']' AS __text FROM markets WHERE closed AND resolved_outcome IS NOT NULL ORDER BY resolved_at DESC LIMIT 200",
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      }
+    ]
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Polymarket Forecast Accuracy",
+  "uid": "pm-accuracy",
+  "version": 1,
+  "weekStart": "",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Forecast accuracy (aggregate)",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "title": "Brier skill vs market",
+      "description": "1 - brier_belief/brier_baseline, averaged over every graded market. Positive = we beat the market's ingest price; 0 = tied; negative = the market baseline was better than our final belief. This is the headline 'is this thing worth running?' number.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0 },
+              { "color": "green", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "forecast_brier_skill",
+          "legendFormat": "brier skill"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Markets scored",
+      "description": "Rows in forecast_scores — how many resolved markets we've graded so far.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "forecast_scored_markets",
+          "legendFormat": "scored"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Scoring rate (per hr)",
+      "description": "How fast newly-resolved markets are being graded. Near 0 most of the time is normal — markets resolve on the order of days, not minutes.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(scorer_markets_scored_total[1h])) * 3600",
+          "legendFormat": "scored/hr"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Brier score over time (belief vs market baseline)",
+      "description": "Mean Brier across every scored market so far, recomputed each scorer cycle. Lower is better; 0.25 = coin flip. Belief tracking below the baseline line means we're beating the market.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "forecast_brier_mean",
+          "legendFormat": "our belief"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "forecast_brier_baseline_mean",
+          "legendFormat": "market baseline"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Log loss over time (belief vs market baseline)",
+      "description": "Mean log loss across every scored market so far. Punishes confident-and-wrong forecasts much harder than Brier does — a model can look fine on Brier while being systematically overconfident, which shows up here instead.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "forecast_logloss_mean",
+          "legendFormat": "our belief"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "forecast_logloss_baseline_mean",
+          "legendFormat": "market baseline"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Market detail — convergence race",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "panels": []
+    },
+    {
+      "id": 8,
+      "title": "Our belief vs market price vs outcome",
+      "description": "Pick a resolved market above. 'our belief' is a step function — it only moves when the worker re-evaluates on news, so it's rendered as steps, not interpolated. 'market price' is Polymarket's own price, sampled by the syncer whenever it moves. 'outcome' is the flat 0/1 line the market ultimately settled at. The question this answers: does our belief reach the outcome side BEFORE the market's price does? That lead — not the eventual convergence, which both series always reach — is the edge.",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 2, "showPoints": "never", "lineInterpolation": "linear" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "our belief" },
+            "properties": [
+              { "id": "custom.lineInterpolation", "value": "stepAfter" },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "market price" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "outcome" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "gray" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "time_series",
+          "rawSql": "SELECT\n  ts AS \"time\",\n  yes_price AS \"market price\"\nFROM market_prices\nWHERE market_id = '$market_id'\n  AND $__timeFilter(ts)\nORDER BY ts"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "time_series",
+          "rawSql": "SELECT time, \"our belief\" FROM (\n  SELECT\n    (SELECT min(ts) FROM market_prices WHERE market_id = '$market_id') AS time,\n    (SELECT seed_price FROM markets WHERE id = '$market_id') AS \"our belief\"\n  UNION ALL\n  SELECT ts AS time, new_score AS \"our belief\"\n  FROM belief_updates\n  WHERE market_id = '$market_id'\n) belief\nWHERE $__timeFilter(time)\nORDER BY time"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "time_series",
+          "rawSql": "SELECT $__timeFrom() AS \"time\", resolved_outcome AS \"outcome\"\nFROM markets WHERE id = '$market_id'\nUNION ALL\nSELECT $__timeTo(), resolved_outcome\nFROM markets WHERE id = '$market_id'\nORDER BY time"
+        }
+      ]
+    }
+  ]
+}
