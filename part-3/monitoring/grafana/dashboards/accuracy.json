@@ -9,21 +9,7 @@
   "schemaVersion": 39,
   "tags": ["polymarket", "accuracy"],
   "templating": {
-    "list": [
-      {
-        "name": "market_id",
-        "label": "Market",
-        "type": "query",
-        "datasource": { "type": "postgres", "uid": "postgres" },
-        "definition": "SELECT id AS __value, question || '  [' || to_char(resolved_at, 'YYYY-MM-DD') || ']' AS __text FROM markets WHERE closed AND resolved_outcome IS NOT NULL ORDER BY resolved_at DESC LIMIT 200",
-        "query": "SELECT id AS __value, question || '  [' || to_char(resolved_at, 'YYYY-MM-DD') || ']' AS __text FROM markets WHERE closed AND resolved_outcome IS NOT NULL ORDER BY resolved_at DESC LIMIT 200",
-        "refresh": 1,
-        "sort": 0,
-        "includeAll": false,
-        "multi": false,
-        "current": {}
-      }
-    ]
+    "list": []
   },
   "time": { "from": "now-30d", "to": "now" },
   "timepicker": {},
@@ -203,77 +189,6 @@
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "forecast_logloss_baseline_mean",
           "legendFormat": "market baseline"
-        }
-      ]
-    },
-    {
-      "id": 7,
-      "title": "Market detail — convergence race",
-      "type": "row",
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
-      "panels": []
-    },
-    {
-      "id": 8,
-      "title": "Our belief vs market price vs outcome",
-      "description": "Pick a resolved market above. 'our belief' is a step function — it only moves when the worker re-evaluates on news, so it's rendered as steps, not interpolated. 'market price' is Polymarket's own price, sampled by the syncer whenever it moves. 'outcome' is the flat 0/1 line the market ultimately settled at. The question this answers: does our belief reach the outcome side BEFORE the market's price does? That lead — not the eventual convergence, which both series always reach — is the edge.",
-      "type": "timeseries",
-      "datasource": { "type": "postgres", "uid": "postgres" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percentunit",
-          "min": 0,
-          "max": 1,
-          "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 2, "showPoints": "never", "lineInterpolation": "linear" }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "our belief" },
-            "properties": [
-              { "id": "custom.lineInterpolation", "value": "stepAfter" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "market price" },
-            "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "outcome" },
-            "properties": [
-              { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } },
-              { "id": "custom.fillOpacity", "value": 0 },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "gray" } }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "postgres", "uid": "postgres" },
-          "format": "time_series",
-          "rawSql": "SELECT\n  ts AS \"time\",\n  yes_price AS \"market price\"\nFROM market_prices\nWHERE market_id = '$market_id'\n  AND $__timeFilter(ts)\nORDER BY ts"
-        },
-        {
-          "refId": "B",
-          "datasource": { "type": "postgres", "uid": "postgres" },
-          "format": "time_series",
-          "rawSql": "SELECT time, \"our belief\" FROM (\n  SELECT\n    (SELECT min(ts) FROM market_prices WHERE market_id = '$market_id') AS time,\n    (SELECT seed_price FROM markets WHERE id = '$market_id') AS \"our belief\"\n  UNION ALL\n  SELECT ts AS time, new_score AS \"our belief\"\n  FROM belief_updates\n  WHERE market_id = '$market_id'\n) belief\nWHERE $__timeFilter(time)\nORDER BY time"
-        },
-        {
-          "refId": "C",
-          "datasource": { "type": "postgres", "uid": "postgres" },
-          "format": "time_series",
-          "rawSql": "SELECT $__timeFrom() AS \"time\", resolved_outcome AS \"outcome\"\nFROM markets WHERE id = '$market_id'\nUNION ALL\nSELECT $__timeTo(), resolved_outcome\nFROM markets WHERE id = '$market_id'\nORDER BY time"
         }
       ]
     }
