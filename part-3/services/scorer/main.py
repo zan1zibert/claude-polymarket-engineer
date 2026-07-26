@@ -135,6 +135,7 @@ def run(once: bool = False) -> None:
         try:
             c = score_once(db)
             metrics.SCORER_MARKETS_SCORED.inc(c["scored"])
+            metrics.SCORER_LAST_RUN_TIMESTAMP.set(time.time())
             skill = "n/a" if c["skill"] is None else f"{c['skill']:+.3f}"
             log.info(
                 "scored: %d newly graded (%d pending), brier skill vs market %s",
