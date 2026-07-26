@@ -16,6 +16,7 @@ ones we've re-evaluated, or where our belief diverges most from the market.
 - Sort the market list by **number of belief updates** (↑/↓).
 - Sort by **divergence** = `abs(our belief − market price)`, i.e. how far our
   current belief sits from the current market price (↑/↓).
+- Sort by **days to resolution** = `end_date` (↑ soonest / ↓ furthest).
 - Keep **recent** (by `end_date`) as the default-style ordering.
 - Filter to **markets with ≥1 belief update**, to hide the zero-update noise.
 - Show the sorted-by value in each dropdown label so it's readable in place.
@@ -62,6 +63,8 @@ Order in the top bar: `Status` → `Activity` → `Sort` → `Market`.
 - `Belief updates ↑` : `updates_asc`
 - `Divergence ↓` : `div_desc`
 - `Divergence ↑` : `div_asc`
+- `Days to resolution ↓` : `res_desc` (furthest-out `end_date` first)
+- `Days to resolution ↑` : `res_asc` (soonest `end_date` first)
 - **Default: `updates_desc`** (`Belief updates ↓`).
 
 Defaults are chosen so the dashboard opens onto the re-evaluated markets,
@@ -90,6 +93,8 @@ ORDER BY
   CASE WHEN '$sort'='updates_asc'  THEN COALESCE(u.n,0) END ASC  NULLS LAST,
   CASE WHEN '$sort'='div_desc'     THEN abs(m.current_score - px.yes_price) END DESC NULLS LAST,
   CASE WHEN '$sort'='div_asc'      THEN abs(m.current_score - px.yes_price) END ASC  NULLS LAST,
+  CASE WHEN '$sort'='res_desc'     THEN m.end_date END DESC NULLS LAST,
+  CASE WHEN '$sort'='res_asc'      THEN m.end_date END ASC  NULLS LAST,
   (m.end_date IS NULL), m.end_date DESC
 LIMIT 500
 ```
@@ -130,6 +135,8 @@ data:
 - `Belief updates ↓/↑` order by count correctly; labels show `· N upd`.
 - `Divergence ↓/↑` order by `abs(belief − price)`; labels show `· Δx.xx`;
   null-metric markets fall to the bottom.
+- `Days to resolution ↓/↑` order by `end_date` (furthest / soonest first);
+  NULL `end_date` markets fall to the bottom.
 - `Recent` matches the previous `end_date` ordering.
 - `Has belief updates` hides all zero-update markets; `All markets` restores
   them; combines correctly with each `Status` value.

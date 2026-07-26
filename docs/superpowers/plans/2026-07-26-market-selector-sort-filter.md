@@ -265,6 +265,106 @@ git commit -m "feat(grafana): sort/filter market-detail selector by belief updat
 
 ---
 
+## Task 3: Add "Days to resolution" sort options
+
+**Files:**
+- Modify: `part-3/monitoring/grafana/dashboards/market-detail.json` (add two options to the `sort` variable; add two `ORDER BY` terms to the `market_id` `query`/`definition`)
+
+**Interfaces:**
+- Consumes: the `sort` variable and `market_id` query from Task 2.
+- Produces: two new sort options `res_desc` / `res_asc` ordering by `end_date`.
+
+- [ ] **Step 1: Validate the two new ORDER BY terms against the fixtures**
+
+`res_asc` = soonest `end_date` first; `res_desc` = furthest first. Run both:
+
+```bash
+cd /Users/zzibert/personal/claude-polymarket-engineer/part-3
+for S in res_asc res_desc; do echo "--- $S ---"; docker compose -f docker-compose.yml exec -T postgres psql -U pm -d pm -qtA -c "
+SELECT COALESCE(m.slug,m.question) AS slug, m.end_date
+FROM markets m
+LEFT JOIN (SELECT market_id, count(*) n FROM belief_updates GROUP BY market_id) u ON u.market_id=m.id
+LEFT JOIN LATERAL (SELECT yes_price FROM market_prices p WHERE p.market_id=m.id ORDER BY ts DESC LIMIT 1) px ON true
+WHERE ('all'='all' OR COALESCE(u.n,0)>0)
+ORDER BY
+  CASE WHEN '$S'='updates_desc' THEN COALESCE(u.n,0) END DESC NULLS LAST,
+  CASE WHEN '$S'='updates_asc'  THEN COALESCE(u.n,0) END ASC  NULLS LAST,
+  CASE WHEN '$S'='div_desc'     THEN abs(m.current_score - px.yes_price) END DESC NULLS LAST,
+  CASE WHEN '$S'='div_asc'      THEN abs(m.current_score - px.yes_price) END ASC  NULLS LAST,
+  CASE WHEN '$S'='res_desc'     THEN m.end_date END DESC NULLS LAST,
+  CASE WHEN '$S'='res_asc'      THEN m.end_date END ASC  NULLS LAST,
+  (m.end_date IS NULL), m.end_date DESC
+LIMIT 500;"; done
+```
+
+Expected: `res_asc` orders by `end_date` ascending (earliest first — e.g. `merger-close-q2-resolved` 2026-07-24 first); `res_desc` descending (latest first — e.g. `verify-one-update-market` 2026-08-15 first). NULL end_dates last. No error.
+
+- [ ] **Step 2: Add the two options to the `sort` variable**
+
+In `market-detail.json`, the `sort` variable's `query` string currently ends with `...Divergence ↑ : div_asc`. Append:
+
+```
+,Days to resolution ↓ : res_desc,Days to resolution ↑ : res_asc
+```
+
+And append these two entries to the `sort` variable's `options` array (after the `div_asc` entry):
+
+```json
+        { "text": "Days to resolution ↓", "value": "res_desc", "selected": false },
+        { "text": "Days to resolution ↑", "value": "res_asc", "selected": false }
+```
+
+- [ ] **Step 3: Add the two ORDER BY terms to the `market_id` query AND definition**
+
+In BOTH the `query` and `definition` fields, insert these two terms immediately before `(m.end_date IS NULL), m.end_date DESC`:
+
+```
+CASE WHEN '$sort'='res_desc' THEN m.end_date END DESC NULLS LAST, CASE WHEN '$sort'='res_asc' THEN m.end_date END ASC NULLS LAST,
+```
+
+The tail of both strings becomes: `...CASE WHEN '$sort'='div_asc' THEN abs(m.current_score - px.yes_price) END ASC NULLS LAST, CASE WHEN '$sort'='res_desc' THEN m.end_date END DESC NULLS LAST, CASE WHEN '$sort'='res_asc' THEN m.end_date END ASC NULLS LAST, (m.end_date IS NULL), m.end_date DESC LIMIT 500`
+
+- [ ] **Step 4: Validate JSON + consistency**
+
+```bash
+cd /Users/zzibert/personal/claude-polymarket-engineer/part-3
+python3 -m json.tool monitoring/grafana/dashboards/market-detail.json > /dev/null && echo VALID
+python3 -c "
+import json; d=json.load(open('monitoring/grafana/dashboards/market-detail.json'))
+sortv=[v for v in d['templating']['list'] if v['name']=='sort'][0]
+vals=[o['value'] for o in sortv['options']]
+assert vals==['recent','updates_desc','updates_asc','div_desc','div_asc','res_desc','res_asc'], vals
+mid=[v for v in d['templating']['list'] if v['name']=='market_id'][0]
+assert mid['query']==mid['definition'], 'query != definition'
+assert mid['query'].count('res_desc')==1 and mid['query'].count('res_asc')==1
+print('OK', vals)
+"
+```
+
+Expected: `VALID` then `OK [...'res_desc', 'res_asc']`.
+
+- [ ] **Step 5: Provision and verify via the Grafana datasource API**
+
+```bash
+docker compose -f docker-compose.yml restart grafana >/dev/null 2>&1
+for i in $(seq 1 30); do s=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3000/api/health"); [ "$s" = "200" ] && break; sleep 2; done
+docker compose -f docker-compose.yml logs grafana 2>&1 | grep -iE "market-detail|provision.*error|invalid" | grep -iv "up to date" | tail -10
+echo "(no error lines above = good)"
+```
+
+Then POST the `market_id` SQL with `$status`→`All`, `$activity`→`all`, `$sort`→`res_asc` (and again `res_desc`) to `http://127.0.0.1:3000/api/ds/query` (uid `postgres`, format `table`) and confirm the `__text` order matches Step 1 (soonest end_date first for `res_asc`, furthest first for `res_desc`). Do NOT use `localhost` (IPv6 → SSH tunnel to remote prod).
+
+Expected: both orderings match Step 1; no datasource error.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add part-3/monitoring/grafana/dashboards/market-detail.json
+git commit -m "feat(grafana): add days-to-resolution sort options to market selector"
+```
+
+---
+
 ## Final verification
 
 - [ ] `python3 -m json.tool part-3/monitoring/grafana/dashboards/market-detail.json > /dev/null` passes.
