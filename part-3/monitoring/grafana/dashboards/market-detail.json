@@ -1,0 +1,183 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "name": "resolution",
+        "datasource": { "type": "postgres", "uid": "postgres" },
+        "enable": true,
+        "iconColor": "red",
+        "target": {
+          "rawSql": "SELECT end_date AS time, 'resolution' AS text FROM markets WHERE id = '$market_id' AND end_date IS NOT NULL",
+          "format": "table"
+        }
+      }
+    ]
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["polymarket", "market-detail"],
+  "templating": {
+    "list": [
+      {
+        "name": "status",
+        "label": "Status",
+        "type": "custom",
+        "query": "All,Open,Resolved",
+        "current": { "text": "All", "value": "All" },
+        "options": [
+          { "text": "All", "value": "All", "selected": true },
+          { "text": "Open", "value": "Open", "selected": false },
+          { "text": "Resolved", "value": "Resolved", "selected": false }
+        ]
+      },
+      {
+        "name": "market_id",
+        "label": "Market",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "postgres" },
+        "definition": "SELECT id AS __value, COALESCE(slug, question) AS __text FROM markets WHERE ('$status' = 'All') OR ('$status' = 'Open' AND NOT closed) OR ('$status' = 'Resolved' AND closed AND resolved_outcome IS NOT NULL) ORDER BY (end_date IS NULL), end_date DESC LIMIT 500",
+        "query": "SELECT id AS __value, COALESCE(slug, question) AS __text FROM markets WHERE ('$status' = 'All') OR ('$status' = 'Open' AND NOT closed) OR ('$status' = 'Resolved' AND closed AND resolved_outcome IS NOT NULL) ORDER BY (end_date IS NULL), end_date DESC LIMIT 500",
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      }
+    ]
+  },
+  "time": { "from": "now-90d", "to": "now+30d" },
+  "timepicker": {},
+  "title": "Polymarket — Market Detail",
+  "uid": "pm-market-detail",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Overview",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 2, "title": "Current belief", "type": "stat",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3 } },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table",
+        "rawSql": "SELECT current_score FROM markets WHERE id = '$market_id'" } ]
+    },
+    {
+      "id": 3, "title": "Market price (latest)", "type": "stat",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 3 } },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table",
+        "rawSql": "SELECT yes_price FROM market_prices WHERE market_id = '$market_id' ORDER BY ts DESC LIMIT 1" } ]
+    },
+    {
+      "id": 4, "title": "Days to resolution", "type": "stat",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 1 } },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table",
+        "rawSql": "SELECT EXTRACT(epoch FROM (end_date - now()))/86400 AS days FROM markets WHERE id = '$market_id'" } ]
+    },
+    {
+      "id": 5, "title": "Belief updates", "type": "stat",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 4, "w": 4, "x": 15, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 0 } },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table",
+        "rawSql": "SELECT count(*) FROM belief_updates WHERE market_id = '$market_id'" } ]
+    },
+    {
+      "id": 6, "title": "Brier skill (resolved)", "type": "stat",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "none", "decimals": 3,
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0 }, { "color": "green", "value": 0.05 } ] } },
+        "color": { "mode": "thresholds" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table",
+        "rawSql": "SELECT 1 - brier_belief/NULLIF(brier_baseline,0) AS skill FROM forecast_scores WHERE market_id = '$market_id'" } ]
+    },
+    {
+      "id": 10,
+      "title": "Belief vs market price vs outcome",
+      "description": "Blue 'our belief' is a step function — it moves only when the worker re-evaluates on news. Orange 'market price' is Polymarket's own price. Gray dashed 'outcome' is the 0/1 the market settled at (absent until resolved). The red annotation marks end_date: the gap between the last point and that line is the time left to resolution.",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit", "min": 0, "max": 1,
+          "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 2, "showPoints": "never", "lineInterpolation": "linear" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "our belief" }, "properties": [
+            { "id": "custom.lineInterpolation", "value": "stepAfter" },
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } } ] },
+          { "matcher": { "id": "byName", "options": "market price" }, "properties": [
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } } ] },
+          { "matcher": { "id": "byName", "options": "outcome" }, "properties": [
+            { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } },
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "gray" } } ] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "time_series",
+          "rawSql": "SELECT ts AS \"time\", yes_price AS \"market price\" FROM market_prices WHERE market_id = '$market_id' AND $__timeFilter(ts) ORDER BY ts" },
+        { "refId": "B", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "time_series",
+          "rawSql": "SELECT time, \"our belief\" FROM ( SELECT (SELECT min(ts) FROM market_prices WHERE market_id = '$market_id') AS time, (SELECT seed_price FROM markets WHERE id = '$market_id') AS \"our belief\" UNION ALL SELECT ts AS time, new_score AS \"our belief\" FROM belief_updates WHERE market_id = '$market_id' ) belief WHERE $__timeFilter(time) ORDER BY time" },
+        { "refId": "C", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "time_series",
+          "rawSql": "SELECT $__timeFrom() AS \"time\", resolved_outcome AS \"outcome\" FROM markets WHERE id = '$market_id' UNION ALL SELECT $__timeTo(), resolved_outcome FROM markets WHERE id = '$market_id' ORDER BY time" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Edge over the market (belief error advantage)",
+      "description": "edge = |market − outcome| − |belief − outcome|, sampled at each price observation using the belief in effect at that moment. Positive (green) = our belief was closer to the truth than the market; negative (red) = the market was closer. Empty until the market resolves.",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 15 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none", "decimals": 3,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 25, "gradientMode": "scheme", "showPoints": "never", "lineInterpolation": "linear", "thresholdsStyle": { "mode": "line" } },
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 0 } ] }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "time_series",
+          "rawSql": "SELECT mp.ts AS \"time\", abs(m.resolved_outcome - mp.yes_price) - abs(m.resolved_outcome - COALESCE(b.belief, m.seed_price)) AS \"edge\" FROM market_prices mp JOIN markets m ON m.id = mp.market_id LEFT JOIN LATERAL ( SELECT new_score AS belief FROM belief_updates bu WHERE bu.market_id = mp.market_id AND bu.ts <= mp.ts ORDER BY bu.ts DESC LIMIT 1 ) b ON true WHERE mp.market_id = '$market_id' AND m.resolved_outcome IS NOT NULL AND $__timeFilter(mp.ts) ORDER BY mp.ts" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Reasoning log — why the belief moved",
+      "description": "Every belief update for the selected market, newest first: the score before and after, the article that triggered it, and the model's reasoning.",
+      "type": "table",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 21 },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left", "cellOptions": { "type": "auto", "wrapText": true } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "from" }, "properties": [ { "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 3 }, { "id": "custom.width", "value": 90 } ] },
+          { "matcher": { "id": "byName", "options": "to" }, "properties": [ { "id": "unit", "value": "percentunit" }, { "id": "decimals", "value": 3 }, { "id": "custom.width", "value": 90 } ] },
+          { "matcher": { "id": "byName", "options": "article" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "markdown" } }, { "id": "custom.width", "value": 260 } ] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "time", "desc": true } ] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table",
+          "rawSql": "SELECT ts AS \"time\", previous_score AS \"from\", new_score AS \"to\", '[link](' || article_url || ')' AS \"article\", reasoning FROM belief_updates WHERE market_id = '$market_id' ORDER BY ts DESC" }
+      ]
+    }
+  ]
+}
