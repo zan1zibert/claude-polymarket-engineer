@@ -19,7 +19,7 @@ set -uo pipefail
 cd "$(dirname "$0")" || exit 2
 
 COMPOSE_FILES=${COMPOSE_FILES:-"-f docker-compose.yml -f docker-compose.prod.yml"}
-SERVICES="redis postgres feeder worker syncer"
+SERVICES="redis postgres feeder worker syncer scorer"
 
 dc() { docker compose $COMPOSE_FILES "$@"; }
 
@@ -118,7 +118,25 @@ else
   warn "audit log empty or missing (no belief updates yet — normal on a fresh deploy)"
 fi
 
-# --- 5. Host resources -----------------------------------------------------
+# --- 5. Scorer ---------------------------------------------------------
+hdr "Scorer"
+awaiting=$(q "SELECT count(*) FROM markets WHERE closed AND resolved_outcome IS NULL")
+scored=$(q "SELECT count(*) FROM forecast_scores")
+last_scored=$(q "SELECT COALESCE(to_char(max(scored_at) AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI')||' UTC','never') FROM forecast_scores")
+pending=$(q "SELECT count(*) FROM markets m LEFT JOIN forecast_scores s ON s.market_id = m.id
+             WHERE m.closed AND m.resolved_outcome IS NOT NULL AND m.resolved_outcome != 0.5
+               AND m.current_score IS NOT NULL AND s.market_id IS NULL")
+echo "    forecast_scores=${scored:-?} (last: ${last_scored:-?})  awaiting_outcome=${awaiting:-?}  pending_scoring=${pending:-?}"
+if [ -n "${pending:-}" ] && [ "$pending" -gt 0 ] 2>/dev/null; then
+  warn "${pending} resolved market(s) waiting to be graded — scorer running? (dc logs scorer)"
+else
+  ok "no scoring backlog"
+fi
+if [ -n "${awaiting:-}" ] && [ "$awaiting" -gt 200 ] 2>/dev/null; then
+  warn "awaiting_outcome is high (${awaiting}) — syncer backfill may be stuck (dc logs syncer)"
+fi
+
+# --- 6. Host resources -----------------------------------------------------
 hdr "Host"
 disk=$(df -hP / | awk 'NR==2{print $5" used ("$4" free)"}')
 echo "    disk /: $disk"
