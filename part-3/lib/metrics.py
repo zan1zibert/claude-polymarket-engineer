@@ -145,6 +145,14 @@ FORECAST_BRIER_SKILL = Gauge(
 FORECAST_SCORED_MARKETS = Gauge(
     "forecast_scored_markets", "Total markets graded so far (rows in forecast_scores)"
 )
+# Unix timestamp of the last completed scorer cycle, whether or not it graded
+# any markets — scorer_markets_scored_total's rate is near-zero most of the
+# time by design (markets resolve every few days, not every cycle), so it
+# can't tell a hung scorer from a quiet one. Panel it as `time() - metric` to
+# get a staleness gauge, same pattern as SYNCER_LAST_SYNC_TIMESTAMP above.
+SCORER_LAST_RUN_TIMESTAMP = Gauge(
+    "scorer_last_run_timestamp_seconds", "Unix time of the last completed scorer cycle"
+)
 
 
 def start_metrics_server(port: int) -> None:
