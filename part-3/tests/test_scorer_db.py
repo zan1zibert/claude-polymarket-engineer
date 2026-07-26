@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(
     not TEST_DATABASE_URL, reason="set TEST_DATABASE_URL to run scorer DB tests"
 )
 
-_MARKET_IDS = ("utest_sA", "utest_sB", "utest_sC")
+_MARKET_IDS = ("utest_sA", "utest_sB", "utest_sC", "utest_sD")
 _ZERO_VECTOR = "[" + ",".join(["0"] * 1024) + "]"
 
 
@@ -78,6 +78,8 @@ def test_unscored_queue_excludes_open_and_outcomeless(db):
                  resolved_outcome=None)                       # still open
     _seed_market("utest_sC", closed=True, current_score=0.5, seed_price=0.5,
                  resolved_outcome=None)                       # closed, outcome unknown
+    _seed_market("utest_sD", closed=True, current_score=0.7, seed_price=0.6,
+                 resolved_outcome=0.5)                         # closed, canceled/tied 50-50
 
     pending = db.resolved_unscored_markets()
     ids = {p["market_id"] for p in pending}

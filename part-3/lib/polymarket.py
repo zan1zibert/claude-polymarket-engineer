@@ -48,6 +48,8 @@ def resolved_yes_price(market: dict) -> Optional[float]:
     yes = price_map.get("yes")
     if yes is None:
         return None
+    if yes == 0.5:
+        return 0.5
     if abs(yes) <= 1e-3 or abs(yes - 1.0) <= 1e-3:
         return float(round(yes))
     return None
@@ -145,7 +147,8 @@ def filter_markets(
 def fetch_statuses(
     client: httpx.Client,
     ids: list[str],
-    url: str = GAMMA_MARKETS_URL
+    url: str = GAMMA_MARKETS_URL,
+    closed: bool = False
 ) -> dict[str, dict]:
     """Current {closed, end_date, resolved_outcome, yes_price} per id we still store.
 
@@ -159,6 +162,7 @@ def fetch_statuses(
         chunk = ids[start:start + _STATUS_CHUNK]
         # Repeated `id` params: ?id=1&id=2&...
         params = [("id", i) for i in chunk]
+        params.append(("closed", closed))
         params.append(("limit", len(chunk)))
         resp = client.get(url, params=params)
         resp.raise_for_status()

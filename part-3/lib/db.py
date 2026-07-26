@@ -339,6 +339,7 @@ class Db:
                 LEFT JOIN forecast_scores s ON s.market_id = m.id
                 WHERE m.closed
                   AND m.resolved_outcome IS NOT NULL
+                  AND m.resolved_outcome != 0.5
                   AND m.current_score IS NOT NULL
                   AND s.market_id IS NULL
                 """

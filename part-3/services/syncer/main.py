@@ -114,7 +114,9 @@ def sync_once(
     awaiting_ids = db.awaiting_market_ids()
     if awaiting_ids:
         awaiting_statuses = polymarket.fetch_statuses(
-            client, awaiting_ids, url=settings.gamma_markets_url
+            client, awaiting_ids,
+            url=settings.gamma_markets_url,
+            closed=True
         )
         backfilled = db.backfill_outcomes(
             {i: (awaiting_statuses.get(i) or {}).get("resolved_outcome") for i in awaiting_ids}

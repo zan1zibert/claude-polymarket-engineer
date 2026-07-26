@@ -4,3 +4,4 @@
 #   pytest                      # unit tests (DB tests skip without TEST_DATABASE_URL)
 #   TEST_DATABASE_URL=postgresql://pm:pm@localhost:5432/pm pytest   # + DB tests
 pytest
+respx

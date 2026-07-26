@@ -1,12 +1,22 @@
-"""Unit tests for the Gamma payload parsers in lib/polymarket.
+"""Unit tests for the Gamma payload parsers and status fetcher in lib/polymarket.
 
 Pure functions, no network — these pin down the two price parsers the syncer
 relies on: `current_yes_price` (live price for the price series) and
 `resolved_yes_price` (settled 0/1 outcome). Gamma is inconsistent about whether
 list fields arrive as JSON lists or JSON-encoded strings, so both forms are
 covered.
+
+`fetch_statuses` does hit the network (mocked via respx here) — it's the one
+place the `closed` query param matters: Gamma's `/markets?id=...` lookup
+implicitly filters to `closed=false` when the param is omitted, so a market
+that has already resolved is silently absent from the response unless
+`closed=True` is passed explicitly. That's exactly the bug that let the
+"awaiting outcome" backfill never fire.
 """
-from lib.polymarket import current_yes_price, resolved_yes_price
+import httpx
+import respx
+
+from lib.polymarket import GAMMA_MARKETS_URL, current_yes_price, fetch_statuses, resolved_yes_price
 
 
 class TestCurrentYesPrice:
@@ -69,3 +79,58 @@ class TestResolvedYesPrice:
         m = {"outcomes": ["Yes", "No"], "outcomePrices": ["0.37", "0.63"]}
         assert resolved_yes_price(m) is None
         assert current_yes_price(m) == 0.37
+
+    def test_settled_fifty_fifty_is_not_rounded_to_no(self):
+        # A canceled/tied event settles 50/50 — must not collapse to 0.0 via
+        # round-half-to-even (round(0.5) == 0 in Python).
+        m = {"outcomes": ["Yes", "No"], "outcomePrices": ["0.5", "0.5"]}
+        assert resolved_yes_price(m) == 0.5
+
+
+class TestFetchStatuses:
+    """`closed` must reach Gamma as an explicit query param, not be omitted —
+    omitting it silently drops closed markets from the response."""
+
+    @respx.mock
+    def test_default_requests_open_markets(self):
+        route = respx.get(GAMMA_MARKETS_URL).mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "id": "1", "closed": False, "endDate": "2026-01-01",
+                    "outcomes": ["Yes", "No"], "outcomePrices": ["0.6", "0.4"],
+                }
+            ])
+        )
+        with httpx.Client() as client:
+            result = fetch_statuses(client, ["1"])
+
+        assert route.calls.last.request.url.params["closed"] == "false"
+        assert result["1"]["yes_price"] == 0.6
+
+    @respx.mock
+    def test_closed_true_requests_resolved_markets(self):
+        route = respx.get(GAMMA_MARKETS_URL).mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "id": "2", "closed": True, "endDate": "2026-01-01",
+                    "outcomes": ["Yes", "No"], "outcomePrices": ["0", "1"],
+                }
+            ])
+        )
+        with httpx.Client() as client:
+            result = fetch_statuses(client, ["2"], closed=True)
+
+        assert route.calls.last.request.url.params["closed"] == "true"
+        assert result["2"]["resolved_outcome"] == 0.0
+
+    @respx.mock
+    def test_id_missing_from_response_is_absent_from_result(self):
+        # Gamma's implicit closed=false default means a resolved id queried
+        # without closed=True comes back empty — the exact failure mode that
+        # left the awaiting-outcome backfill permanently stuck.
+        respx.get(GAMMA_MARKETS_URL).mock(return_value=httpx.Response(200, json=[]))
+
+        with httpx.Client() as client:
+            result = fetch_statuses(client, ["3"])
+
+        assert result == {}
