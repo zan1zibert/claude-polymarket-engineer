@@ -23,6 +23,7 @@ datasources:
     isDefault: false
     editable: false
     jsonData:
+      database: pm
       sslmode: disable
       postgresVersion: 1600
     secureJsonData:

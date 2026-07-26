@@ -133,7 +133,7 @@
         { "refId": "B", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "time_series",
           "rawSql": "SELECT time, \"our belief\" FROM ( SELECT (SELECT min(ts) FROM market_prices WHERE market_id = '$market_id') AS time, (SELECT seed_price FROM markets WHERE id = '$market_id') AS \"our belief\" UNION ALL SELECT ts AS time, new_score AS \"our belief\" FROM belief_updates WHERE market_id = '$market_id' ) belief WHERE $__timeFilter(time) ORDER BY time" },
         { "refId": "C", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "time_series",
-          "rawSql": "SELECT $__timeFrom() AS \"time\", resolved_outcome AS \"outcome\" FROM markets WHERE id = '$market_id' UNION ALL SELECT $__timeTo(), resolved_outcome FROM markets WHERE id = '$market_id' ORDER BY time" }
+          "rawSql": "SELECT $__timeFrom()::timestamptz AS \"time\", resolved_outcome AS \"outcome\" FROM markets WHERE id = '$market_id' UNION ALL SELECT $__timeTo()::timestamptz, resolved_outcome FROM markets WHERE id = '$market_id' ORDER BY time" }
       ]
     },
     {
