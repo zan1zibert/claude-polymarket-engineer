@@ -31,7 +31,7 @@
   "timezone": "",
   "title": "Polymarket Pipeline",
   "uid": "pm-pipeline",
-  "version": 3,
+  "version": 4,
   "weekStart": "",
   "panels": [
     {
@@ -455,6 +455,50 @@
       "targets": [
         { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(syncer_markets_inserted_total[1h])) * 3600", "legendFormat": "inserted/hr" },
         { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(syncer_markets_resolved_total[1h])) * 3600", "legendFormat": "resolved/hr" }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Scorer",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 69 },
+      "panels": []
+    },
+    {
+      "id": 23,
+      "title": "Time since last scorer run",
+      "description": "Staleness = now - last completed scorer cycle. scorer_markets_scored_total's rate is near-zero most of the time by design (markets resolve every few days, not every cycle), so it can't tell a hung scorer from a quiet one — this panel is the one that can. Thresholds assume the hourly (3600s) default — retune to your SCORER_INTERVAL_SECONDS (yellow ≈ 1 missed cycle, red ≈ 2).",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 70 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 7200 },
+              { "color": "red", "value": 10800 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "time() - max(scorer_last_run_timestamp_seconds)",
+          "legendFormat": "staleness"
+        }
       ]
     }
   ]
