@@ -32,6 +32,7 @@ from lib.claude import reevaluate
 from lib.config import Settings, load_settings
 from lib.db import Db
 from lib.embeddings import Embedder
+from lib.groq_relevance import check_relevance
 from lib import metrics
 from lib.queue import BeliefQueue, NewsQueue
 from lib.schemas import Article, BeliefUpdate
@@ -74,7 +75,38 @@ def process_article(
     src = article.source
     metrics.WORKER_ARTICLES_PROCESSED.labels(source=src).inc()
     embedding = embedder.embed_query(f"{article.title}\n{article.summary}")
-    markets = db.top_k_markets(embedding, settings.top_k, settings.max_cosine_distance)
+    candidates = db.top_k_markets(embedding, settings.top_k)
+    if not candidates:
+        metrics.WORKER_ARTICLES_SKIPPED.labels(source=src).inc()
+        log.info("no candidate markets for %r, skipping", article.title)
+        return
+
+    article_payload = {"title": article.title, "summary": article.summary, "url": article.url}
+
+    markets = []
+    for candidate in candidates:
+        market_payload = {"question": candidate.question, "description": candidate.description}
+        verdict = check_relevance(article_payload, market_payload, model=settings.groq_model)
+
+        if "error" in verdict:
+            metrics.WORKER_GROQ_FAILURES.labels(source=src).inc()
+            db.log_relevance_check(
+                article.url, article.title, candidate.id, False,
+                f"groq_error: {verdict['error']}", settings.groq_model,
+            )
+            continue
+
+        relevant = bool(verdict.get("relevant"))
+        reasoning = verdict.get("reasoning", "")
+        db.log_relevance_check(
+            article.url, article.title, candidate.id, relevant, reasoning, settings.groq_model,
+        )
+        if relevant:
+            metrics.WORKER_GROQ_RELEVANT.labels(source=src).inc()
+            markets.append(candidate)
+        else:
+            metrics.WORKER_GROQ_REJECTED.labels(source=src).inc()
+
     if not markets:
         metrics.WORKER_ARTICLES_SKIPPED.labels(source=src).inc()
         log.info("no relevant markets for %r, skipping", article.title)
@@ -82,7 +114,6 @@ def process_article(
 
     metrics.WORKER_MARKETS_MATCHED.labels(source=src).inc(len(markets))
     log.info("%r matched %d market(s)", article.title, len(markets))
-    article_payload = {"title": article.title, "summary": article.summary, "url": article.url}
 
     for market in markets:
         with metrics.CLAUDE_REEVAL_DURATION.time():
@@ -142,8 +173,8 @@ def run() -> None:
         signal.signal(sig, lambda *_: stop.__setitem__("flag", True))
 
     log.info(
-        "worker started: model=%s top_k=%d max_distance=%.2f",
-        settings.anthropic_model, settings.top_k, settings.max_cosine_distance,
+        "worker started: model=%s top_k=%d groq_model=%s",
+        settings.anthropic_model, settings.top_k, settings.groq_model,
     )
 
     while not stop["flag"]:

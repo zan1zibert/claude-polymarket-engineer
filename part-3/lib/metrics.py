@@ -66,6 +66,22 @@ WORKER_BELIEF_MOVED = Counter(
     "(the signal, as opposed to re-evals that left the score flat)",
     ["source"],
 )
+WORKER_GROQ_RELEVANT = Counter(
+    "worker_groq_relevant_total",
+    "Candidates the Groq relevance check accepted (proceeded to Claude)",
+    ["source"],
+)
+WORKER_GROQ_REJECTED = Counter(
+    "worker_groq_rejected_total",
+    "Candidates the Groq relevance check rejected as not relevant",
+    ["source"],
+)
+WORKER_GROQ_FAILURES = Counter(
+    "worker_groq_failures_total",
+    "Candidates dropped because the Groq relevance check errored or failed to parse "
+    "(counted separately from worker_groq_rejected_total so outages are visible)",
+    ["source"],
+)
 CLAUDE_REEVAL_DURATION = Histogram(
     "claude_reeval_duration_seconds", "Wall-clock duration of one Claude re-evaluation call"
 )
