@@ -50,3 +50,13 @@ def test_check_relevance_handles_missing_relevant_field():
         result = groq_relevance.check_relevance(_ARTICLE, _MARKET, model="llama-3.1-8b-instant")
 
     assert result["error"] == "Missing 'relevant' field"
+
+
+def test_check_relevance_handles_groq_api_error():
+    with patch.object(groq_relevance._client.chat.completions, "create",
+                       side_effect=Exception("connection timeout")):
+        result = groq_relevance.check_relevance(_ARTICLE, _MARKET, model="llama-3.1-8b-instant")
+
+    assert "error" in result
+    assert "connection timeout" in result["error"]
+    assert result["raw"] == ""

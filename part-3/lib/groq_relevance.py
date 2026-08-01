@@ -44,14 +44,18 @@ def check_relevance(article: dict, market: dict, *, model: str) -> dict:
         article_summary=article.get("summary", "") or "(no summary)",
     )
 
-    response = _client.chat.completions.create(
-        model=model,
-        max_tokens=512,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
+    try:
+        response = _client.chat.completions.create(
+            model=model,
+            max_tokens=512,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except Exception as exc:
+        return {"error": f"Groq API error: {exc}", "raw": ""}
+
     text = response.choices[0].message.content.strip()
 
     try:
