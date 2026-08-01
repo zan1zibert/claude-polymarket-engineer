@@ -76,10 +76,6 @@ def process_article(
     metrics.WORKER_ARTICLES_PROCESSED.labels(source=src).inc()
     embedding = embedder.embed_query(f"{article.title}\n{article.summary}")
     candidates = db.top_k_markets(embedding, settings.top_k)
-    if not candidates:
-        metrics.WORKER_ARTICLES_SKIPPED.labels(source=src).inc()
-        log.info("no candidate markets for %r, skipping", article.title)
-        return
 
     article_payload = {"title": article.title, "summary": article.summary, "url": article.url}
 
