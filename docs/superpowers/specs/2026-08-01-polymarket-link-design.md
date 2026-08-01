@@ -1,6 +1,6 @@
 # Market-Detail: One-Click Polymarket Link — Design
 
-**Date:** 2026-07-26
+**Date:** 2026-08-01
 **Status:** Approved (pending implementation plan)
 
 ## Problem
