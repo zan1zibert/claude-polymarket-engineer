@@ -11,5 +11,7 @@ Summary: {article_summary}
 Does this article describe the same real-world event or development this
 market's question is about? Output only valid JSON:
 
-"relevant": true|false,
-"reasoning": one sentence
+{{
+  "relevant": true|false,
+  "reasoning": "one sentence"
+}}

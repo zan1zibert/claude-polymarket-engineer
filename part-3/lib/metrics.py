@@ -41,11 +41,12 @@ WORKER_ARTICLES_PROCESSED = Counter(
     ["source"],
 )
 WORKER_ARTICLES_SKIPPED = Counter(
-    "worker_articles_skipped_total", "Articles with no market past the cosine gate",
+    "worker_articles_skipped_total",
+    "Articles with no top_k_markets candidates, or none that passed the Groq relevance check",
     ["source"],
 )
 WORKER_MARKETS_MATCHED = Counter(
-    "worker_markets_matched_total", "Markets returned within the cosine-distance gate",
+    "worker_markets_matched_total", "Markets that passed the Groq relevance check",
     ["source"],
 )
 WORKER_MARKETS_REEVALUATED = Counter(
