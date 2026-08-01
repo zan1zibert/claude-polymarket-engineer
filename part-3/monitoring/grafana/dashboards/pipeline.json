@@ -99,7 +99,7 @@
       "description": "Near 0 = workers starved (ingestion-bound). Growing = worker/Claude-bound.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 9 },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 9 },
       "fieldConfig": {
         "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "showPoints": "never" } },
         "overrides": []
@@ -110,12 +110,28 @@
       ]
     },
     {
+      "id": 24,
+      "title": "Groq tokens/sec",
+      "description": "Input vs output token throughput for the Groq relevance check — cost and rate-limit pressure.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 9 },
+      "fieldConfig": {
+        "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (type) (rate(groq_tokens_total[5m]))", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
       "id": 4,
       "title": "Claude tokens/sec",
       "description": "Input vs output token throughput — cost and rate-limit pressure.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 9 },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 9 },
       "fieldConfig": {
         "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
         "overrides": []
@@ -131,7 +147,7 @@
       "description": "Query (worker) vs document (syncer) embedding token throughput.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 9 },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 9 },
       "fieldConfig": {
         "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
         "overrides": []
