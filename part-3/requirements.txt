@@ -1,12 +1,13 @@
 # Shared dependencies across the part-3 services.
 # feeder:  httpx, feedparser, redis
-# worker:  + anthropic, voyageai, psycopg, pgvector
+# worker:  + anthropic, voyageai, groq, psycopg, pgvector
 httpx
 feedparser
 redis
 python-dotenv
 anthropic
 voyageai
+groq
 psycopg[binary]
 pgvector
 prometheus_client
