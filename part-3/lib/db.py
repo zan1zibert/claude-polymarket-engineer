@@ -3,6 +3,7 @@
 Operations the worker needs:
   - top_k_markets   : nearest markets to an article embedding (read-only)
   - apply_belief_update : atomically swap a market's score and log the transition
+  - log_relevance_check : record a Groq relevance verdict for one candidate
 
 Operations the market-syncer needs (services/syncer/):
   - existing_market_ids     : which of these ids do we already store?
@@ -46,30 +47,26 @@ class Db:
             cur.execute("SELECT 1")
             return cur.fetchone() == (1,)
 
-    def top_k_markets(
-        self, embedding: list[float], k: int, max_distance: float
-    ) -> list[Market]:
-        """Markets nearest the embedding, dropping anything beyond the relevance gate.
+    def top_k_markets(self, embedding: list[float], k: int) -> list[Market]:
+        """The k markets nearest the embedding, by cosine distance.
 
-        `<=>` is pgvector's cosine distance (0 = identical, 2 = opposite). We
-        order by it, keep the k closest, then filter by `max_distance` so an
-        article that matches nothing relevant returns an empty list.
+        Retrieval only — no relevance filtering here. `<=>` is pgvector's
+        cosine distance (0 = identical, 2 = opposite); we order by it and take
+        the k closest open markets. The caller (worker) is responsible for
+        deciding which of these candidates are actually relevant (see
+        lib/groq_relevance.check_relevance) — a distance cutoff can't tell two
+        different events discussed with overlapping vocabulary apart.
         """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id, question, description, current_score
-                FROM (
-                    SELECT id, question, description, current_score,
-                           embedding <=> %s AS distance
-                    FROM markets
-                    WHERE NOT closed
-                    ORDER BY distance
-                    LIMIT %s
-                ) ranked
-                WHERE distance <= %s
+                FROM markets
+                WHERE NOT closed
+                ORDER BY embedding <=> %s
+                LIMIT %s
                 """,
-                (Vector(embedding), k, max_distance),
+                (Vector(embedding), k),
             )
             return [
                 Market(id=r[0], question=r[1], description=r[2], current_score=r[3])
@@ -121,6 +118,32 @@ class Db:
             article_url=article_url,
             reasoning=reasoning,
         )
+
+    def log_relevance_check(
+        self,
+        article_url: str,
+        article_title: str,
+        market_id: str,
+        relevant: bool,
+        reasoning: str,
+        model: str,
+    ) -> None:
+        """Persist one Groq relevance verdict for a (article, market) candidate.
+
+        Called once per top_k_markets candidate, regardless of verdict —
+        accepted, rejected, or a Groq failure (relevant=False with a
+        "groq_error: ..." reasoning) — so the filter's precision can be
+        reviewed from real data instead of guessed at.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO relevance_checks
+                    (article_url, article_title, market_id, relevant, reasoning, model)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (article_url, article_title, market_id, relevant, reasoning, model),
+            )
 
     # ----------------------------------------------------------------- syncer
 

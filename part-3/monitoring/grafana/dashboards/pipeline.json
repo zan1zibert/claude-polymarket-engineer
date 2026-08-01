@@ -66,7 +66,7 @@
     {
       "id": 2,
       "title": "Article match rate",
-      "description": "Fraction of processed articles that found at least one market past the cosine gate. Low = relevance-bound (the bottleneck we discussed).",
+      "description": "Fraction of processed articles that found at least one market that passed the Groq relevance check. Low = relevance-bound (the bottleneck we discussed).",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 9, "w": 8, "x": 16, "y": 0 },

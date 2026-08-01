@@ -41,11 +41,12 @@ WORKER_ARTICLES_PROCESSED = Counter(
     ["source"],
 )
 WORKER_ARTICLES_SKIPPED = Counter(
-    "worker_articles_skipped_total", "Articles with no market past the cosine gate",
+    "worker_articles_skipped_total",
+    "Articles with no top_k_markets candidates, or none that passed the Groq relevance check",
     ["source"],
 )
 WORKER_MARKETS_MATCHED = Counter(
-    "worker_markets_matched_total", "Markets returned within the cosine-distance gate",
+    "worker_markets_matched_total", "Markets that passed the Groq relevance check",
     ["source"],
 )
 WORKER_MARKETS_REEVALUATED = Counter(
@@ -66,14 +67,33 @@ WORKER_BELIEF_MOVED = Counter(
     "(the signal, as opposed to re-evals that left the score flat)",
     ["source"],
 )
+WORKER_GROQ_RELEVANT = Counter(
+    "worker_groq_relevant_total",
+    "Candidates the Groq relevance check accepted (proceeded to Claude)",
+    ["source"],
+)
+WORKER_GROQ_REJECTED = Counter(
+    "worker_groq_rejected_total",
+    "Candidates the Groq relevance check rejected as not relevant",
+    ["source"],
+)
+WORKER_GROQ_FAILURES = Counter(
+    "worker_groq_failures_total",
+    "Candidates dropped because the Groq relevance check errored or failed to parse "
+    "(counted separately from worker_groq_rejected_total so outages are visible)",
+    ["source"],
+)
 CLAUDE_REEVAL_DURATION = Histogram(
     "claude_reeval_duration_seconds", "Wall-clock duration of one Claude re-evaluation call"
 )
 
 # --- shared external-API token usage ---
-# `type` = input|output for Claude; `operation` = query|document for Voyage.
+# `type` = input|output for Claude and Groq; `operation` = query|document for Voyage.
 CLAUDE_TOKENS = Counter(
     "claude_tokens_total", "Claude tokens consumed", ["type"]
+)
+GROQ_TOKENS = Counter(
+    "groq_tokens_total", "Groq tokens consumed", ["type"]
 )
 VOYAGE_EMBEDDING_TOKENS = Counter(
     "voyage_embedding_tokens_total", "Voyage embedding tokens consumed", ["operation"]
