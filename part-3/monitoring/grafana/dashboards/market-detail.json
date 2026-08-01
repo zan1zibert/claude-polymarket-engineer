@@ -131,12 +131,40 @@
         "rawSql": "SELECT 1 - brier_belief/NULLIF(brier_baseline,0) AS skill FROM forecast_scores WHERE market_id = '$market_id'" } ]
     },
     {
+      "id": 7,
+      "title": "↗ Open on Polymarket",
+      "description": "Opens the selected market on Polymarket in a new tab. The value shown is the market slug (also selectable/copyable). URL: https://polymarket.com/market/<slug>.",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "links": [
+            { "title": "Open on Polymarket", "url": "https://polymarket.com/market/${__data.fields.slug}", "targetBlank": true }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }
+      },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "postgres" }, "format": "table",
+          "rawSql": "SELECT slug FROM markets WHERE id = '$market_id'" }
+      ]
+    },
+    {
       "id": 10,
       "title": "Belief vs market price vs outcome",
       "description": "Blue 'our belief' is a step function — it moves only when the worker re-evaluates on news. Orange 'market price' is Polymarket's own price. Gray dashed 'outcome' is the 0/1 the market settled at (absent until resolved). The red annotation marks end_date: the gap between the last point and that line is the time left to resolution.",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "postgres" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 5 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit", "min": 0, "max": 1,
@@ -169,7 +197,7 @@
       "description": "edge = |market − outcome| − |belief − outcome|, sampled at each price observation using the belief in effect at that moment. Positive (green) = our belief was closer to the truth than the market; negative (red) = the market was closer. Empty until the market resolves.",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "postgres" },
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 15 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
       "fieldConfig": {
         "defaults": {
           "unit": "none", "decimals": 3,
@@ -191,7 +219,7 @@
       "description": "Every belief update for the selected market, newest first: the score before and after, the article that triggered it, and the model's reasoning.",
       "type": "table",
       "datasource": { "type": "postgres", "uid": "postgres" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 21 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 24 },
       "fieldConfig": {
         "defaults": { "custom": { "align": "left", "cellOptions": { "type": "auto", "wrapText": true } } },
         "overrides": [
