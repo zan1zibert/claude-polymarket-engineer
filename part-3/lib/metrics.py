@@ -88,9 +88,12 @@ CLAUDE_REEVAL_DURATION = Histogram(
 )
 
 # --- shared external-API token usage ---
-# `type` = input|output for Claude; `operation` = query|document for Voyage.
+# `type` = input|output for Claude and Groq; `operation` = query|document for Voyage.
 CLAUDE_TOKENS = Counter(
     "claude_tokens_total", "Claude tokens consumed", ["type"]
+)
+GROQ_TOKENS = Counter(
+    "groq_tokens_total", "Groq tokens consumed", ["type"]
 )
 VOYAGE_EMBEDDING_TOKENS = Counter(
     "voyage_embedding_tokens_total", "Voyage embedding tokens consumed", ["operation"]

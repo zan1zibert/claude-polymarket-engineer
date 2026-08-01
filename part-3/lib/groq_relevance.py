@@ -15,6 +15,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from groq import Groq
 
+from lib.metrics import GROQ_TOKENS
+
 load_dotenv()
 
 _client = Groq()  # reads GROQ_API_KEY from env
@@ -55,6 +57,9 @@ def check_relevance(article: dict, market: dict, *, model: str) -> dict:
         )
     except Exception as exc:
         return {"error": f"Groq API error: {exc}", "raw": ""}
+
+    GROQ_TOKENS.labels(type="input").inc(response.usage.prompt_tokens)
+    GROQ_TOKENS.labels(type="output").inc(response.usage.completion_tokens)
 
     text = response.choices[0].message.content.strip()
 
