@@ -48,7 +48,7 @@ services:
     environment:
       # override the base pm:pm DSN with the real password from .env
       DATABASE_URL: postgresql://pm:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/pm
-      TOP_K: ${TOP_K}
+      TOP_K: ${TOP_K:?set TOP_K in .env}
 
   syncer:
     logging: *default-logging
