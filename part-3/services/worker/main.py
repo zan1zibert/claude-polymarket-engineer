@@ -94,6 +94,8 @@ def process_article(
 
         relevant = bool(verdict.get("relevant"))
         reasoning = verdict.get("reasoning", "")
+        log.info("Article: %r for market: %r, relevant: %s, reasoning: %r", article.title, candidate.question, relevant, reasoning)
+
         db.log_relevance_check(
             article.url, article.title, candidate.id, relevant, reasoning, settings.groq_model,
         )
