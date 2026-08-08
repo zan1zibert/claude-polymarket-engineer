@@ -147,6 +147,32 @@ The *volume* is a non-issue (300 fetches / 900 s ≈ 20 req/min); only the burst
 
 Net effect: lowest steady request rate in the common case, with a hard ceiling
 on peak concurrency in the worst case.
+
+#### Connection reuse
+
+Because every dynamic fetch hits a single host (`news.google.com`), reusing
+keep-alive connections is both gentler on Google and cheaper locally than
+re-doing TCP+TLS per request. This mostly comes for free and needs no new work:
+
+- **Keep-alive pooling is already on.** The feeder creates one
+  `httpx.AsyncClient` and reuses it across cycles; httpx pools connections by
+  default (`max_keepalive_connections=20`), so requests to `news.google.com`
+  reuse pooled connections and the pool persists across ticks. The paced
+  launcher's low, steady concurrency naturally encourages this reuse.
+- **Do NOT enable HTTP/2.** httpx is HTTP/1.1-only unless `httpx[http2]` is
+  installed *and* `http2=True` is passed (neither is true today — `h2` isn't
+  installed). HTTP/2's benefit is multiplexing many concurrent streams over one
+  connection, which is irrelevant at this design's deliberately low concurrency
+  (~1–8 in flight). Sequential keep-alive reuse over HTTP/1.1 already gives the
+  gentle/cheap behavior; HTTP/2 would add a dependency for no meaningful gain.
+- **`keepalive_expiry` is the only knob, and only if needed.** httpx's default
+  is 5s. Reuse happens when the inter-call spacing (`interval / N`) is under
+  that: at high `N` (tight spacing, e.g. ~3s) reuse works with the default —
+  which is exactly the case where handshake savings matter most; at low `N`
+  (spacing > 5s) idle connections expire and each call re-handshakes, but at
+  that rate the handshake cost is negligible. So it self-balances; only raise
+  `keepalive_expiry` above the spacing if handshake overhead ever proves to
+  matter (trade-off: idle sockets held open longer).
 - Staleness is bounded and harmless: because the snapshot only refreshes when
   the syncer runs (daily by default), a market that closes mid-day keeps being
   queried until the next snapshot. That produces only a few wasted
