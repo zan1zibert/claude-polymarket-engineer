@@ -49,11 +49,13 @@ def check_relevance(article: dict, market: dict, *, model: str) -> dict:
     try:
         response = _client.chat.completions.create(
             model=model,
-            max_tokens=512,
+            max_completion_tokens=512,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_prompt},
             ],
+            temperature=0.2,
+            response_format={"type": "json_object"}
         )
     except Exception as exc:
         return {"error": f"Groq API error: {exc}", "raw": ""}
@@ -62,12 +64,9 @@ def check_relevance(article: dict, market: dict, *, model: str) -> dict:
     GROQ_TOKENS.labels(type="output").inc(response.usage.completion_tokens)
 
     text = response.choices[0].message.content.strip()
-
     try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        parsed = json.loads(text[start:end])
-    except (json.JSONDecodeError, ValueError):
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
         return {"error": "Failed to parse JSON", "raw": text}
 
     if "relevant" not in parsed:
