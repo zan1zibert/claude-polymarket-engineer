@@ -34,6 +34,7 @@ from lib import metrics, polymarket
 from lib.config import Settings, load_settings
 from lib.db import Db
 from lib.embeddings import Embedder
+from lib.market_snapshot import MarketSnapshot
 
 logging.basicConfig(
     level=logging.INFO,
@@ -145,6 +146,14 @@ def sync_once(
     }
 
 
+def publish_snapshot(db: Db, snapshot: MarketSnapshot) -> int:
+    """Overwrite the feeder's open-market snapshot from the current DB state.
+    Returns the number of open markets published."""
+    markets = db.open_market_questions()
+    snapshot.publish(markets)
+    return len(markets)
+
+
 def _wait_for_db(settings: Settings, attempts: int = 30) -> Db:
     """Retry connecting to Postgres until it's accepting connections."""
     for i in range(attempts):
@@ -167,6 +176,7 @@ def run(once: bool = False) -> None:
     embedder = Embedder(
         settings.voyage_api_key, settings.voyage_model, settings.embedding_dim
     )
+    snapshot = MarketSnapshot(settings.redis_url, settings.market_feed_snapshot_key)
 
     metrics.start_metrics_server(settings.metrics_port)
 
@@ -201,6 +211,8 @@ def run(once: bool = False) -> None:
                 metrics.SYNCER_CLOSED_MARKETS.set(counts["closed"])
                 metrics.SYNCER_AWAITING_OUTCOME.set(counts["awaiting"])
                 metrics.SYNCER_LAST_SYNC_TIMESTAMP.set(time.time())
+                published = publish_snapshot(db, snapshot)
+                log.info("published market snapshot: %d open markets", published)
                 log.info(
                     "synced: %d candidates, +%d new, %d resolved, %d backfilled, %d prices",
                     c["fetched"], c["inserted"], c["resolved"], c["backfilled"], c["recorded"],
