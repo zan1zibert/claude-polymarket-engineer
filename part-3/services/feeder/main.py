@@ -123,6 +123,41 @@ async def fetch_feed(client: httpx.AsyncClient, feed: Feed) -> list[tuple[str, A
     return pairs
 
 
+async def fetch_feeds_paced(
+    client: httpx.AsyncClient,
+    feeds: list[Feed],
+    interval_seconds: float,
+    max_concurrency: int,
+    *,
+    fetch=fetch_feed,
+    sleep=asyncio.sleep,
+) -> list[tuple[str, Article]]:
+    """Fetch every feed once, launches spread evenly across interval_seconds
+    (delay = interval / N) and bounded to max_concurrency in flight.
+
+    Spreading avoids bursting hundreds of requests at a single host
+    (news.google.com) every cycle; the semaphore is a floor guard for when the
+    market count grows large enough that even spacing can't keep the launches
+    apart. fetch/sleep are injectable for tests.
+    """
+    if not feeds:
+        return []
+    delay = interval_seconds / len(feeds)
+    sem = asyncio.Semaphore(max_concurrency)
+
+    async def _one(feed: Feed) -> list[tuple[str, Article]]:
+        async with sem:
+            return await fetch(client, feed)
+
+    tasks = []
+    for i, feed in enumerate(feeds):
+        if i:
+            await sleep(delay)
+        tasks.append(asyncio.create_task(_one(feed)))
+    results = await asyncio.gather(*tasks)
+    return [pair for sub in results for pair in sub]
+
+
 async def poll_once(
     client: httpx.AsyncClient, queue: NewsQueue, dedup: Dedup, settings: Settings
 ) -> int:
