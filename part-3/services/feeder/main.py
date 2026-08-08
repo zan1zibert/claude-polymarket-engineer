@@ -31,6 +31,8 @@ from lib.config import Settings, load_settings
 from lib.dedup import Dedup, normalize_url
 from lib.feeds import FEEDS, Feed
 from lib import metrics
+from lib.market_feeds import build_query_feeds
+from lib.market_snapshot import MarketSnapshot
 from lib.queue import NewsQueue
 from lib.schemas import Article
 
@@ -158,26 +160,56 @@ async def fetch_feeds_paced(
     return [pair for sub in results for pair in sub]
 
 
+def _enqueue(
+    results: list[tuple[str, Article]],
+    queue: NewsQueue,
+    dedup: Dedup,
+    cutoff: datetime,
+) -> int:
+    """Apply the freshness gate + dedup, push survivors, return count pushed.
+    Shared by the static and dynamic poll loops; `cutoff` lets each loop use
+    its own freshness window."""
+    pushed = 0
+    for key, a in results:
+        if a.published_at and datetime.fromisoformat(a.published_at) < cutoff:
+            continue
+        if not dedup.is_new(key):
+            continue
+        queue.push(a)
+        metrics.FEEDER_ARTICLES_PUSHED.labels(source=a.source).inc()
+        pushed += 1
+    return pushed
+
+
 async def poll_once(
     client: httpx.AsyncClient, queue: NewsQueue, dedup: Dedup, settings: Settings
 ) -> int:
-    """Run one full poll across all feeds. Returns the number of new articles enqueued."""
+    """Run one full poll across all static feeds. Returns new articles enqueued."""
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.freshness_window_minutes)
     results = await asyncio.gather(*(fetch_feed(client, f) for f in FEEDS))
+    flat = [pair for sub in results for pair in sub]
+    return _enqueue(flat, queue, dedup, cutoff)
 
-    pushed = 0
-    for pairs in results:
-        for key, a in pairs:
-            # Freshness gate. Articles with no date bypass it (treated as fresh)
-            # but dedup still guarantees we enqueue each article at most once.
-            if a.published_at and datetime.fromisoformat(a.published_at) < cutoff:
-                continue
-            if not dedup.is_new(key):
-                continue
-            queue.push(a)
-            metrics.FEEDER_ARTICLES_PUSHED.labels(source=a.source).inc()
-            pushed += 1
-    return pushed
+
+async def poll_dynamic_once(
+    client: httpx.AsyncClient,
+    queue: NewsQueue,
+    dedup: Dedup,
+    snapshot: MarketSnapshot,
+    settings: Settings,
+) -> int:
+    """One dynamic cycle: read the open-market snapshot, build a Google News
+    query feed per market, fetch them paced/capped, enqueue the survivors."""
+    feeds = build_query_feeds(snapshot.read())
+    metrics.FEEDER_MARKET_QUERY_FEEDS.set(len(feeds))
+    results = await fetch_feeds_paced(
+        client, feeds,
+        settings.market_feed_poll_interval_seconds,
+        settings.market_feed_max_concurrency,
+    )
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        minutes=settings.market_feed_freshness_window_minutes)
+    return _enqueue(results, queue, dedup, cutoff)
 
 
 def _wait_for_redis(queue: NewsQueue, attempts: int = 30) -> None:
