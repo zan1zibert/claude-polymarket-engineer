@@ -240,6 +240,11 @@ async def run(once: bool = False) -> None:
         metrics.FEEDER_ARTICLES_FETCHED.labels(source=f.name)
         metrics.FEEDER_ARTICLES_PUSHED.labels(source=f.name)
 
+    # Dynamic-feed articles all share one source label (no per-market cardinality).
+    metrics.FEEDER_ARTICLES_FETCHED.labels(source="Google News Query")
+    metrics.FEEDER_ARTICLES_PUSHED.labels(source="Google News Query")
+    snapshot = MarketSnapshot(settings.redis_url, settings.market_feed_snapshot_key)
+
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -254,24 +259,40 @@ async def run(once: bool = False) -> None:
         timeout=settings.http_timeout_seconds,
         headers={"User-Agent": settings.user_agent},
     ) as client:
-        while not stop.is_set():
-            try:
-                pushed = await poll_once(client, queue, dedup, settings)
-                depth = queue.depth()
-                metrics.FEEDER_POLL_CYCLES.inc()
-                metrics.NEWS_QUEUE_DEPTH.set(depth)
-                log.info("pushed %d new articles (queue depth %d)", pushed, depth)
-            except Exception:
-                log.exception("poll cycle failed")
+        async def _static_loop() -> None:
+            while not stop.is_set():
+                try:
+                    pushed = await poll_once(client, queue, dedup, settings)
+                    depth = queue.depth()
+                    metrics.FEEDER_POLL_CYCLES.inc()
+                    metrics.NEWS_QUEUE_DEPTH.set(depth)
+                    log.info("pushed %d new articles (queue depth %d)", pushed, depth)
+                except Exception:
+                    log.exception("poll cycle failed")
+                if once:
+                    break
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=settings.poll_interval_seconds)
+                except asyncio.TimeoutError:
+                    pass
 
-            if once:
-                break
+        async def _dynamic_loop() -> None:
+            while not stop.is_set():
+                try:
+                    pushed = await poll_dynamic_once(client, queue, dedup, snapshot, settings)
+                    log.info("dynamic: pushed %d new articles from %d query feeds",
+                             pushed, int(metrics.FEEDER_MARKET_QUERY_FEEDS._value.get()))
+                except Exception:
+                    log.exception("dynamic poll cycle failed")
+                if once:
+                    break
+                try:
+                    await asyncio.wait_for(
+                        stop.wait(), timeout=settings.market_feed_poll_interval_seconds)
+                except asyncio.TimeoutError:
+                    pass
 
-            # Sleep for the interval, but wake immediately on shutdown signal.
-            try:
-                await asyncio.wait_for(stop.wait(), timeout=settings.poll_interval_seconds)
-            except asyncio.TimeoutError:
-                pass
+        await asyncio.gather(_static_loop(), _dynamic_loop())
 
     log.info("feeder stopped")
 
