@@ -117,7 +117,36 @@ existing static-feed loop:
 - Each tick: read the `MARKET_FEED_SNAPSHOT_KEY` snapshot from Redis, pass the
   `(id, question)` pairs through `build_query_feeds`, then fetch each resulting
   feed through the existing `fetch_feed` / freshness-gate / dedup / queue-push
-  path — unchanged from how static feeds are handled today.
+  path — the per-feed handling is unchanged from static feeds; only the
+  *scheduling* of the fetches differs (see Pacing).
+
+### Pacing the dynamic fetches
+
+The static loop `asyncio.gather`s all feeds at once — fine for ~12 distinct
+publisher hosts, but wrong for hundreds of query feeds that all hit a single
+host (`news.google.com`). A burst of, say, 300 concurrent search requests to
+one host every 15 min is the pattern most likely to trip Google's abuse
+prevention, and Google News *search* RSS is unlikely to honor conditional-GET
+validators the way publisher feeds do, so 304s won't soften the burst.
+
+The *volume* is a non-issue (300 fetches / 900 s ≈ 20 req/min); only the burst
+*shape* matters. So the dynamic loop does **not** gather-all. Instead:
+
+- **Paced launcher:** launch one feed fetch every `interval / N` seconds
+  (`N` = number of feeds this tick, `interval` =
+  `market_feed_poll_interval_seconds`). This spreads the fetches evenly across
+  the window while keeping each individual feed on its full-interval cadence
+  (each feed is still polled once per ~15 min). The spacing self-adjusts as the
+  open-market count grows — more markets → tighter spacing, same per-feed
+  cadence.
+- **Concurrency cap:** a semaphore bounds in-flight fetches
+  (`MARKET_FEED_MAX_CONCURRENCY`, default `8`). This is a floor guard: if `N`
+  ever grows large enough (or fetches slow enough) that strict `interval / N`
+  spacing can't keep up within the window, the loop degrades gracefully to
+  cap-bounded concurrency instead of drifting or silently bursting.
+
+Net effect: lowest steady request rate in the common case, with a hard ceiling
+on peak concurrency in the worst case.
 - Staleness is bounded and harmless: because the snapshot only refreshes when
   the syncer runs (daily by default), a market that closes mid-day keeps being
   queried until the next snapshot. That produces only a few wasted
@@ -172,6 +201,8 @@ being read and how it scales with open-market count).
   interval.
 - `MARKET_FEED_SNAPSHOT_KEY` (default `market_feed_snapshot`) — Redis key the
   syncer writes and the feeder reads.
+- `MARKET_FEED_MAX_CONCURRENCY` (default `8`) — cap on in-flight dynamic-feed
+  fetches (floor guard for the paced launcher).
 
 ## Testing
 
@@ -185,6 +216,10 @@ being read and how it scales with open-market count).
   assert `fetch_feed` is called once per generated feed and results flow
   through dedup/queue as normal; separately, assert a missing/unparseable
   snapshot key logs a warning and does not crash either loop.
+- **Unit test** for pacing: with in-flight concurrency instrumented (or the
+  sleep/semaphore mocked), assert the dynamic loop never exceeds
+  `MARKET_FEED_MAX_CONCURRENCY` simultaneous fetches and that all `N` feeds are
+  fetched exactly once per tick.
 - **DB integration test** for `Db.open_market_questions`: skipped unless
   `TEST_DATABASE_URL` is set, matching the existing convention (e.g.
   `Db.log_relevance_check`'s test).
