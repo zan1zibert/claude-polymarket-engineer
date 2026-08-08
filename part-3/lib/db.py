@@ -246,6 +246,14 @@ class Db:
             cur.execute("SELECT id FROM markets WHERE NOT closed")
             return [r[0] for r in cur.fetchall()]
 
+    def open_market_questions(self) -> list[tuple[str, str]]:
+        """(id, question) for every market still open — the set the syncer
+        publishes as the feeder's query-feed snapshot. Same rows as
+        open_market_ids(), plus the question text needed to build a query."""
+        with self._conn.cursor() as cur:
+            cur.execute("SELECT id, question FROM markets WHERE NOT closed")
+            return [(r[0], r[1]) for r in cur.fetchall()]
+
     def awaiting_market_ids(self) -> list[str]:
         """Ids of markets closed on end_date but not yet settled (resolved_outcome
         IS NULL) — the set we keep re-checking against Gamma so their outcome can be
