@@ -29,11 +29,8 @@ WEB_SEARCH_TOOL = {
     "max_uses": WEB_SEARCH_MAX_USES,
 }
 
-
-def _load_prompts() -> tuple[str, str]:
-    system = (PROMPTS_DIR / "worker_system_prompt.txt").read_text()
-    template = (PROMPTS_DIR / "reeval_prompt.txt").read_text()
-    return system, template
+reevaluate_system_prompt = (PROMPTS_DIR / "reevaluate_system_prompt.txt").read_text()
+reevaluate_prompt = (PROMPTS_DIR / "reevaluate_prompt.txt").read_text()
 
 
 def _final_text(response) -> str:
@@ -67,10 +64,9 @@ def reevaluate(
     Returns {probability, confidence, reasoning} or an {error, raw} dict on a
     parse failure.
     """
-    system, template = _load_prompts()
     prior = "unknown (no prior estimate yet)" if current_score is None else f"{current_score:.2f}"
 
-    user_prompt = template.format(
+    user_prompt = reevaluate_prompt.format(
         question=market["question"],
         description=market.get("description", "") or "(no description)",
         current_score=prior,
@@ -83,7 +79,7 @@ def reevaluate(
     kwargs = {
         "model": model,
         "max_tokens": 4096,
-        "system": system,
+        "system": reevaluate_system_prompt,
         "messages": [{"role": "user", "content": user_prompt}],
     }
     if use_web_search:
