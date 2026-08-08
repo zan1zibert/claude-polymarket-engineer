@@ -173,6 +173,14 @@ re-doing TCP+TLS per request. This mostly comes for free and needs no new work:
   that rate the handshake cost is negligible. So it self-balances; only raise
   `keepalive_expiry` above the spacing if handshake overhead ever proves to
   matter (trade-off: idle sockets held open longer).
+- **Freshness gate uses a wider dynamic window.** The static loop's
+  `freshness_window_minutes` (30) is right for a 60 s poll but would drop nearly
+  every Google News *search* result, which is routinely hours old. The dynamic
+  loop instead applies `market_feed_freshness_window_minutes` (env
+  `MARKET_FEED_FRESHNESS_WINDOW_MINUTES`, default `180` — 3 h): comfortably
+  covers the 15-min poll gap plus lag without ingesting a full day of history
+  per newly-seen market. Dedup (7-day TTL) makes the wider window safe from
+  re-enqueuing across ticks.
 - Staleness is bounded and harmless: because the snapshot only refreshes when
   the syncer runs (daily by default), a market that closes mid-day keeps being
   queried until the next snapshot. That produces only a few wasted
@@ -229,6 +237,8 @@ being read and how it scales with open-market count).
   syncer writes and the feeder reads.
 - `MARKET_FEED_MAX_CONCURRENCY` (default `8`) — cap on in-flight dynamic-feed
   fetches (floor guard for the paced launcher).
+- `MARKET_FEED_FRESHNESS_WINDOW_MINUTES` (default `180`) — freshness cutoff for
+  dynamic-feed articles (the static loop keeps `FRESHNESS_WINDOW_MINUTES=30`).
 
 ## Testing
 
