@@ -197,14 +197,24 @@ async def poll_dynamic_once(
     dedup: Dedup,
     snapshot: MarketSnapshot,
     settings: Settings,
+    *,
+    once: bool = False,
 ) -> int:
     """One dynamic cycle: read the open-market snapshot, build a Google News
-    query feed per market, fetch them paced/capped, enqueue the survivors."""
+    query feed per market, fetch them paced/capped, enqueue the survivors.
+
+    In one-shot (`once=True`) mode, launches aren't paced — pacing exists to
+    spread load across the poll interval on an ongoing service, which is
+    meaningless for a single run-and-exit invocation."""
     feeds = build_query_feeds(snapshot.read())
     metrics.FEEDER_MARKET_QUERY_FEEDS.set(len(feeds))
+    if not feeds:
+        log.warning(
+            "market snapshot empty — skipping dynamic fetch this tick (has the syncer run yet?)")
+    interval = 0 if once else settings.market_feed_poll_interval_seconds
     results = await fetch_feeds_paced(
         client, feeds,
-        settings.market_feed_poll_interval_seconds,
+        interval,
         settings.market_feed_max_concurrency,
     )
     cutoff = datetime.now(timezone.utc) - timedelta(
@@ -279,7 +289,8 @@ async def run(once: bool = False) -> None:
         async def _dynamic_loop() -> None:
             while not stop.is_set():
                 try:
-                    pushed = await poll_dynamic_once(client, queue, dedup, snapshot, settings)
+                    pushed = await poll_dynamic_once(
+                        client, queue, dedup, snapshot, settings, once=once)
                     log.info("dynamic: pushed %d new articles from %d query feeds",
                              pushed, int(metrics.FEEDER_MARKET_QUERY_FEEDS._value.get()))
                 except Exception:
