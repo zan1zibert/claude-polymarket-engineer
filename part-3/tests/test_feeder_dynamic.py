@@ -31,7 +31,7 @@ def _article(url):
 @pytest.mark.asyncio
 async def test_dynamic_loop_fetches_per_market_and_pushes(monkeypatch):
     snapshot = MagicMock()
-    snapshot.read.return_value = [("1", "Will X?"), ("2", "Will Y?")]
+    snapshot.read.return_value = ["Will X?", "Will Y?"]
     queue = MagicMock()
     dedup = MagicMock()
     dedup.is_new.return_value = True
@@ -42,11 +42,12 @@ async def test_dynamic_loop_fetches_per_market_and_pushes(monkeypatch):
 
     monkeypatch.setattr(feeder, "fetch_feeds_paced", fake_paced)
 
-    pushed = await feeder.poll_dynamic_once(
+    pushed, nr_feeds = await feeder.poll_dynamic_once(
         client=None, queue=queue, dedup=dedup, snapshot=snapshot, settings=_settings(),
     )
 
     assert pushed == 2
+    assert nr_feeds == 2
     assert queue.push.call_count == 2
     assert feeder.metrics.FEEDER_MARKET_QUERY_FEEDS._value.get() == 2
 
@@ -64,11 +65,12 @@ async def test_dynamic_loop_empty_snapshot_pushes_nothing(monkeypatch):
 
     monkeypatch.setattr(feeder, "fetch_feeds_paced", fake_paced)
 
-    pushed = await feeder.poll_dynamic_once(
+    pushed, nr_feeds = await feeder.poll_dynamic_once(
         client=None, queue=queue, dedup=dedup, snapshot=snapshot, settings=_settings(),
     )
 
     assert pushed == 0
+    assert nr_feeds == 0
     queue.push.assert_not_called()
 
 
@@ -77,7 +79,7 @@ async def test_dynamic_loop_once_skips_pacing(monkeypatch):
     """--once must run the dynamic cycle immediately: interval_seconds=0 when
     once=True, and the configured pacing interval otherwise (default preserved)."""
     snapshot = MagicMock()
-    snapshot.read.return_value = [("1", "Will X?")]
+    snapshot.read.return_value = ["Will X?"]
     queue = MagicMock()
     dedup = MagicMock()
     dedup.is_new.return_value = True

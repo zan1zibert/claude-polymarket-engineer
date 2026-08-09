@@ -219,7 +219,7 @@ async def poll_dynamic_once(
     )
     cutoff = datetime.now(timezone.utc) - timedelta(
         minutes=settings.market_feed_freshness_window_minutes)
-    return _enqueue(results, queue, dedup, cutoff)
+    return _enqueue(results, queue, dedup, cutoff), len(feeds)
 
 
 def _wait_for_redis(queue: NewsQueue, attempts: int = 30) -> None:
@@ -289,10 +289,10 @@ async def run(once: bool = False) -> None:
         async def _dynamic_loop() -> None:
             while not stop.is_set():
                 try:
-                    pushed = await poll_dynamic_once(
+                    pushed, nr_feeds = await poll_dynamic_once(
                         client, queue, dedup, snapshot, settings, once=once)
                     log.info("dynamic: pushed %d new articles from %d query feeds",
-                             pushed, int(metrics.FEEDER_MARKET_QUERY_FEEDS._value.get()))
+                             pushed, nr_feeds)
                 except Exception:
                     log.exception("dynamic poll cycle failed")
                 if once:
