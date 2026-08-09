@@ -99,6 +99,7 @@ services:
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS}
       RESOLUTION_WINDOW_DAYS: ${RESOLUTION_WINDOW_DAYS}
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
