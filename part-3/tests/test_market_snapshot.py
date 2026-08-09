@@ -28,15 +28,15 @@ def test_read_missing_key_returns_empty():
 
 def test_publish_then_read_roundtrips():
     snap = _snapshot()
-    snap.publish([("1", "Will X?"), ("2", "Will Y?")])
-    assert snap.read() == [("1", "Will X?"), ("2", "Will Y?")]
+    snap.publish(["Will X?", "Will Y?"])
+    assert snap.read() == ["Will X?", "Will Y?"]
 
 
 def test_publish_is_full_overwrite():
     snap = _snapshot()
-    snap.publish([("1", "Will X?"), ("2", "Will Y?")])
-    snap.publish([("1", "Will X?")])  # market 2 now closed → absent
-    assert snap.read() == [("1", "Will X?")]
+    snap.publish(["Will X?", "Will Y?"])
+    snap.publish(["Will X?"])  # market 2 now closed → absent
+    assert snap.read() == ["Will X?"]
 
 
 def test_read_unparseable_value_returns_empty():

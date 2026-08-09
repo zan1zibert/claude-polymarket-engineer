@@ -11,18 +11,18 @@ def test_empty_input_returns_empty_list():
 
 
 def test_one_feed_per_market():
-    feeds = build_query_feeds([("1", "Will X happen?"), ("2", "Will Y happen?")])
+    feeds = build_query_feeds(["Will X happen?", "Will Y happen?"])
     assert len(feeds) == 2
 
 
 def test_feed_shares_name_and_category():
-    (feed,) = build_query_feeds([("1", "Will X happen?")])
+    (feed,) = build_query_feeds(["Will X happen?"])
     assert feed.name == "Google News Query"
     assert feed.category == "market_query"
 
 
 def test_question_is_url_encoded_into_q_param():
-    (feed,) = build_query_feeds([("1", 'Will "the Fed" cut rates by 50%?')])
+    (feed,) = build_query_feeds(['Will "the Fed" cut rates by 50%?'])
     parts = urlsplit(feed.url)
     assert parts.netloc == _BASE
     q = parse_qs(parts.query)["q"][0]
@@ -30,5 +30,5 @@ def test_question_is_url_encoded_into_q_param():
 
 
 def test_distinct_questions_give_distinct_urls():
-    feeds = build_query_feeds([("1", "Question A"), ("2", "Question B")])
+    feeds = build_query_feeds(["Question A", "Question B"])
     assert feeds[0].url != feeds[1].url

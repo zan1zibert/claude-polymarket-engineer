@@ -149,9 +149,9 @@ def sync_once(
 def publish_snapshot(db: Db, snapshot: MarketSnapshot) -> int:
     """Overwrite the feeder's open-market snapshot from the current DB state.
     Returns the number of open markets published."""
-    markets = db.open_market_questions()
-    snapshot.publish(markets)
-    return len(markets)
+    questions = db.open_market_questions()
+    snapshot.publish(questions)
+    return len(questions)
 
 
 def _wait_for_db(settings: Settings, attempts: int = 30) -> Db:

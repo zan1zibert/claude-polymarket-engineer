@@ -49,6 +49,6 @@ def db(_schema):
 
 
 def test_open_market_questions_returns_only_open_with_question(db):
-    rows = dict(db.open_market_questions())
-    assert rows.get("utest_qOpen") == "Will the open market resolve yes?"
-    assert "utest_qClosed" not in rows
+    questions = db.open_market_questions()
+    assert "Will the open market resolve yes?" in questions
+    assert "Will the closed market resolve yes?" not in questions
