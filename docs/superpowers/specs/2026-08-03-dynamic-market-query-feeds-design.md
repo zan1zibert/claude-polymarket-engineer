@@ -73,7 +73,13 @@ def build_query_feeds(markets: list[tuple[str, str]]) -> list[Feed]:
   `category="market_query"` — see Metrics section for why market_id doesn't
   flow into the Feed's identity.
 
-### `Db.open_market_questions()`
+### Syncer publishes the open-market snapshot to Redis
+
+The open-market set changes **only** when the syncer runs — it is the sole
+writer of the `markets` table (inserts new markets, marks resolved ones
+closed), and does both in one cycle. So the syncer, not the feeder, is the
+natural producer of the feed set, and it already holds a DB connection and
+computes `db.corpus_counts()` each cycle.
 
 New method on `lib/db.py`'s `Db`, alongside `open_market_ids()`:
 
@@ -82,6 +88,21 @@ def open_market_questions(self) -> list[tuple[str, str]]:
     """(id, question) for every market WHERE NOT closed — same set as
     open_market_ids(), with the question text needed to build a query feed."""
 ```
+
+At the end of each `sync_once` cycle, the syncer writes the **full**
+`open_market_questions()` snapshot to a single Redis key
+(`MARKET_FEED_SNAPSHOT_KEY`, default `market_feed_snapshot`) as a JSON list of
+`[id, question]` pairs — a full **overwrite**, not an incremental update.
+
+Why a full-overwrite snapshot rather than a per-market feed store with explicit
+deletes: closed markets simply aren't in the next snapshot, so there is no
+"delete on close" step to get wrong and no way for the feed set to drift out of
+sync with the `markets` table. This is the same principle as the existing
+`WHERE NOT closed` retrieval query — absence is the delete.
+
+This keeps the **feeder DB-free**: it already talks to Redis (queue + dedup),
+so reading one more key adds no new dependency. The feeder never gains a
+Postgres connection.
 
 ### Feeder: second poll loop
 
@@ -93,18 +114,106 @@ existing static-feed loop:
   (60s default): fetching Google News RSS for potentially hundreds of markets
   every minute risks tripping Google's abuse prevention. 15 minutes keeps
   dynamic-feed traffic modest while still catching same-day news.
-- Each tick: call `Db.open_market_questions()`, pass the result through
-  `build_query_feeds`, then fetch each resulting feed through the existing
-  `fetch_feed` / freshness-gate / dedup / queue-push path — unchanged from how
-  static feeds are handled today.
-- This is a real scope change: the feeder currently has no DB dependency (a
-  deliberate "dumb producer" design). It now opens a read-only `Db` connection
-  purely to enumerate which markets are open. Accepted as the cost of solving
-  the specificity gap.
-- On `Db` connection/query failure during a refresh tick: log a warning, keep
-  using the last successfully-built query-feed list (empty list if this is the
-  very first tick and it fails). Never crash the loop or affect the static
-  loop.
+- Each tick: read the `MARKET_FEED_SNAPSHOT_KEY` snapshot from Redis, pass the
+  `(id, question)` pairs through `build_query_feeds`, then fetch each resulting
+  feed through the existing `fetch_feed` / freshness-gate / dedup / queue-push
+  path — the per-feed handling is unchanged from static feeds; only the
+  *scheduling* of the fetches differs (see Pacing).
+
+### Pacing the dynamic fetches
+
+The static loop `asyncio.gather`s all feeds at once — fine for ~12 distinct
+publisher hosts, but wrong for hundreds of query feeds that all hit a single
+host (`news.google.com`). A burst of, say, 300 concurrent search requests to
+one host every 15 min is the pattern most likely to trip Google's abuse
+prevention, and Google News *search* RSS is unlikely to honor conditional-GET
+validators the way publisher feeds do, so 304s won't soften the burst.
+
+The *volume* is a non-issue (300 fetches / 900 s ≈ 20 req/min); only the burst
+*shape* matters. So the dynamic loop does **not** gather-all. Instead:
+
+- **Paced launcher:** launch one feed fetch every `interval / N` seconds
+  (`N` = number of feeds this tick, `interval` =
+  `market_feed_poll_interval_seconds`). This spreads the fetches evenly across
+  the window while keeping each individual feed on its full-interval cadence
+  (each feed is still polled once per ~15 min). The spacing self-adjusts as the
+  open-market count grows — more markets → tighter spacing, same per-feed
+  cadence.
+- **Concurrency cap:** a semaphore bounds in-flight fetches
+  (`MARKET_FEED_MAX_CONCURRENCY`, default `8`). This is a floor guard: if `N`
+  ever grows large enough (or fetches slow enough) that strict `interval / N`
+  spacing can't keep up within the window, the loop degrades gracefully to
+  cap-bounded concurrency instead of drifting or silently bursting.
+
+Net effect: lowest steady request rate in the common case, with a hard ceiling
+on peak concurrency in the worst case.
+
+#### Connection reuse
+
+Because every dynamic fetch hits a single host (`news.google.com`), reusing
+keep-alive connections is both gentler on Google and cheaper locally than
+re-doing TCP+TLS per request. This mostly comes for free and needs no new work:
+
+- **Keep-alive pooling is already on.** The feeder creates one
+  `httpx.AsyncClient` and reuses it across cycles; httpx pools connections by
+  default (`max_keepalive_connections=20`), so requests to `news.google.com`
+  reuse pooled connections and the pool persists across ticks. The paced
+  launcher's low, steady concurrency naturally encourages this reuse.
+- **Do NOT enable HTTP/2.** httpx is HTTP/1.1-only unless `httpx[http2]` is
+  installed *and* `http2=True` is passed (neither is true today — `h2` isn't
+  installed). HTTP/2's benefit is multiplexing many concurrent streams over one
+  connection, which is irrelevant at this design's deliberately low concurrency
+  (~1–8 in flight). Sequential keep-alive reuse over HTTP/1.1 already gives the
+  gentle/cheap behavior; HTTP/2 would add a dependency for no meaningful gain.
+- **`keepalive_expiry` is the only knob, and only if needed.** httpx's default
+  is 5s. Reuse happens when the inter-call spacing (`interval / N`) is under
+  that: at high `N` (tight spacing, e.g. ~3s) reuse works with the default —
+  which is exactly the case where handshake savings matter most; at low `N`
+  (spacing > 5s) idle connections expire and each call re-handshakes, but at
+  that rate the handshake cost is negligible. So it self-balances; only raise
+  `keepalive_expiry` above the spacing if handshake overhead ever proves to
+  matter (trade-off: idle sockets held open longer).
+- **Freshness gate uses a wider dynamic window.** The static loop's
+  `freshness_window_minutes` (30) is right for a 60 s poll but would drop nearly
+  every Google News *search* result, which is routinely hours old. The dynamic
+  loop instead applies `market_feed_freshness_window_minutes` (env
+  `MARKET_FEED_FRESHNESS_WINDOW_MINUTES`, default `180` — 3 h): comfortably
+  covers the 15-min poll gap plus lag without ingesting a full day of history
+  per newly-seen market. Dedup (7-day TTL) makes the wider window safe from
+  re-enqueuing across ticks.
+- Staleness is bounded and harmless: because the snapshot only refreshes when
+  the syncer runs (daily by default), a market that closes mid-day keeps being
+  queried until the next snapshot. That produces only a few wasted
+  (conditional-GET, mostly-304) fetches — a closed market can't receive a
+  belief update anyway, since `top_k_markets` filters `WHERE NOT closed`.
+- On a missing/empty/unparseable snapshot key (e.g. syncer hasn't run yet, or
+  Redis hiccup): log a warning, skip the dynamic fetch this tick, and leave the
+  static loop untouched. Never crash either loop.
+
+### Retrieval stays unchanged: article-as-unit + top_k
+
+Dynamic-feed articles flow through the **same** worker pipeline as static-feed
+articles — embed → `top_k_markets` retrieval → per-candidate Groq relevance →
+Claude reeval. No per-market targeting, no `market_id` threaded from feed to
+worker.
+
+This is deliberate, and it's what makes the design robust to the same story
+appearing across many per-market feeds: the existing URL/guid dedup (7-day TTL)
+collapses those duplicates to **one** queue entry (first feed wins; the rest
+are 304s or deduped), so there is exactly one embed + one top_k + one set of
+Groq calls per *unique* article regardless of how many feeds carried it. Feed
+overlap is absorbed at the feeder's cheap HTTP layer and never reaches the
+token-spending layer.
+
+Per-market targeting (skip top_k, relevance-check only the originating market)
+was considered and rejected: it fights dedup. Dedup discards *which* feed
+surfaced an article, so targeting would require either dropping dedup — fanning
+one article into one work-unit per market, the actual token-explosion risk — or
+carrying every candidate market_id on the deduped article and checking them all,
+which is just top_k by another name. The uniform pipeline avoids both. The real
+cost lever is Claude reevals (Groq at top_k is the cheap gate by design); if a
+news-storm safety valve is ever needed, a global per-cycle dispatch cap is the
+right tool, independent of feed design — out of scope here.
 
 ### Metrics
 
@@ -117,17 +226,36 @@ market's query surfaced a given article. So every dynamic-feed `Feed` shares
 one `name`/`category`, and `FEEDER_ARTICLES_FETCHED{source="Google News Query"}` /
 `FEEDER_ARTICLES_PUSHED{source="Google News Query"}` aggregate across all of
 them. A new gauge, `FEEDER_MARKET_QUERY_FEEDS`, tracks how many dynamic feeds
-are active after each refresh tick (visibility into whether the DB read is
-working and how it scales with open-market count).
+are active after each refresh tick (visibility into whether the snapshot is
+being read and how it scales with open-market count).
+
+### Config summary
+
+- `MARKET_FEED_POLL_INTERVAL_SECONDS` (default `900`) — feeder's dynamic-loop
+  interval.
+- `MARKET_FEED_SNAPSHOT_KEY` (default `market_feed_snapshot`) — Redis key the
+  syncer writes and the feeder reads.
+- `MARKET_FEED_MAX_CONCURRENCY` (default `8`) — cap on in-flight dynamic-feed
+  fetches (floor guard for the paced launcher).
+- `MARKET_FEED_FRESHNESS_WINDOW_MINUTES` (default `180`) — freshness cutoff for
+  dynamic-feed articles (the static loop keeps `FRESHNESS_WINDOW_MINUTES=30`).
 
 ## Testing
 
 - **Unit tests** for `market_feeds.build_query_feeds`: URL construction and
   encoding (spaces, punctuation, quotes in question text), empty input.
-- **Unit test** for the feeder's dynamic loop: mock `Db.open_market_questions`
-  to return a market list, assert `fetch_feed` is called once per generated
-  feed and results flow through dedup/queue as normal; separately, assert a DB
-  failure during refresh logs a warning and does not crash the loop.
+- **Unit test** for the syncer snapshot write: after `sync_once`, assert the
+  Redis key holds the current `open_market_questions()` set as JSON, and that a
+  subsequent cycle with a now-closed market overwrites it (closed market
+  absent) — verifying implicit deletion.
+- **Unit test** for the feeder's dynamic loop: given a snapshot in Redis,
+  assert `fetch_feed` is called once per generated feed and results flow
+  through dedup/queue as normal; separately, assert a missing/unparseable
+  snapshot key logs a warning and does not crash either loop.
+- **Unit test** for pacing: with in-flight concurrency instrumented (or the
+  sleep/semaphore mocked), assert the dynamic loop never exceeds
+  `MARKET_FEED_MAX_CONCURRENCY` simultaneous fetches and that all `N` feeds are
+  fetched exactly once per tick.
 - **DB integration test** for `Db.open_market_questions`: skipped unless
   `TEST_DATABASE_URL` is set, matching the existing convention (e.g.
   `Db.log_relevance_check`'s test).

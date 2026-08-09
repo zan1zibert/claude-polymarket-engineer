@@ -18,6 +18,10 @@ from prometheus_client import Counter, Gauge, Histogram, start_http_server
 FEEDER_RSS_FEEDS = Gauge(
     "feeder_rss_feeds", "Number of RSS feeds in the registry"
 )
+FEEDER_MARKET_QUERY_FEEDS = Gauge(
+    "feeder_market_query_feeds",
+    "Number of per-market Google News query feeds active after the last dynamic refresh",
+)
 FEEDER_POLL_CYCLES = Counter(
     "feeder_poll_cycles_total", "Completed feeder poll cycles"
 )

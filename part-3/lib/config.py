@@ -45,6 +45,12 @@ class Settings:
     # --- scorer (grades resolved markets) ---
     scorer_interval_seconds: int     # how often to grade newly-resolved markets
 
+    # --- dynamic market feeds (feeder second loop) ---
+    market_feed_poll_interval_seconds: int   # dynamic-loop interval
+    market_feed_snapshot_key: str            # Redis key: syncer writes, feeder reads
+    market_feed_max_concurrency: int         # cap on in-flight dynamic fetches
+    market_feed_freshness_window_minutes: int  # freshness cutoff for dynamic articles
+
 
 def load_settings() -> Settings:
     return Settings(
@@ -92,4 +98,12 @@ def load_settings() -> Settings:
         # Hourly by default: markets resolve on the order of days, and scoring is
         # cheap and idempotent, so a tight loop just re-checks an empty work queue.
         scorer_interval_seconds=int(os.environ.get("SCORER_INTERVAL_SECONDS", "3600")),
+        market_feed_poll_interval_seconds=int(
+            os.environ.get("MARKET_FEED_POLL_INTERVAL_SECONDS", "900")),
+        market_feed_snapshot_key=os.environ.get(
+            "MARKET_FEED_SNAPSHOT_KEY", "market_feed_snapshot"),
+        market_feed_max_concurrency=int(
+            os.environ.get("MARKET_FEED_MAX_CONCURRENCY", "8")),
+        market_feed_freshness_window_minutes=int(
+            os.environ.get("MARKET_FEED_FRESHNESS_WINDOW_MINUTES", "180")),
     )
