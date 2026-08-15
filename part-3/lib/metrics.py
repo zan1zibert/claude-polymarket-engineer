@@ -108,6 +108,12 @@ GROQ_TOKENS = Counter(
 VOYAGE_EMBEDDING_TOKENS = Counter(
     "voyage_embedding_tokens_total", "Voyage embedding tokens consumed", ["operation"]
 )
+GROQ_HTTP_STATUS = Counter(
+    "groq_http_status_total",
+    "Groq relevance-check calls by outcome — HTTP status code on failure, "
+    "'200' on success (the client doesn't hand back a code for a clean response)",
+    ["code"],
+)
 
 # --- syncer ---
 SYNCER_MARKETS_FETCHED = Counter(

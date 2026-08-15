@@ -15,7 +15,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from groq import Groq
 
-from lib.metrics import GROQ_TOKENS
+from lib.metrics import GROQ_HTTP_STATUS, GROQ_TOKENS
 
 load_dotenv()
 
@@ -58,8 +58,11 @@ def check_relevance(article: dict, market: dict, *, model: str) -> dict:
             response_format={"type": "json_object"}
         )
     except Exception as exc:
+        code = getattr(exc, "status_code", None) or "unknown"
+        GROQ_HTTP_STATUS.labels(code=str(code)).inc()
         return {"error": f"Groq API error: {exc}", "raw": ""}
 
+    GROQ_HTTP_STATUS.labels(code="200").inc()
     GROQ_TOKENS.labels(type="input").inc(response.usage.prompt_tokens)
     GROQ_TOKENS.labels(type="output").inc(response.usage.completion_tokens)
 
