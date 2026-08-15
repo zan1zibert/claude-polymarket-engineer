@@ -12,7 +12,8 @@ from services.worker.main import process_article
 def _settings(tmp_path, top_k=10):
     return SimpleNamespace(
         top_k=top_k,
-        anthropic_model="claude-sonnet-4-6",
+        anthropic_model="claude-sonnet-5",
+        anthropic_max_tokens=8192,
         worker_use_web_search=False,
         belief_move_epsilon=0.02,
         audit_log_path=str(tmp_path / "belief_updates.jsonl"),

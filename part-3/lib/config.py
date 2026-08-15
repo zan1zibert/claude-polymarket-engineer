@@ -22,6 +22,7 @@ class Settings:
     database_url: str
     belief_queue_key: str        # second Redis list: worker -> signal
     anthropic_model: str
+    anthropic_max_tokens: int
     voyage_api_key: str
     voyage_model: str
     embedding_dim: int
@@ -71,7 +72,8 @@ def load_settings() -> Settings:
             "DATABASE_URL", "postgresql://pm:pm@localhost:5432/pm"
         ),
         belief_queue_key=os.environ.get("BELIEF_QUEUE_KEY", "belief_updates"),
-        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5"),
+        anthropic_max_tokens=int(os.environ.get("ANTHROPIC_MAX_TOKENS", "8192")),
         voyage_api_key=os.environ.get("VOYAGE_API_KEY", ""),
         voyage_model=os.environ.get("VOYAGE_MODEL", "voyage-3.5"),
         embedding_dim=int(os.environ.get("EMBEDDING_DIM", "1024")),

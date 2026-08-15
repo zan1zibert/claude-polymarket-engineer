@@ -55,6 +55,7 @@ def reevaluate(
     article: dict,
     *,
     model: str,
+    max_tokens: int,
     use_web_search: bool = False,
 ) -> dict:
     """Ask Claude to update the prior for one market given one article.
@@ -78,7 +79,7 @@ def reevaluate(
 
     kwargs = {
         "model": model,
-        "max_tokens": 4096,
+        "max_tokens": max_tokens,
         "system": reevaluate_system_prompt,
         "messages": [{"role": "user", "content": user_prompt}],
     }

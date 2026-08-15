@@ -120,6 +120,7 @@ def process_article(
                 market.current_score,
                 article_payload,
                 model=settings.anthropic_model,
+                max_tokens=settings.anthropic_max_tokens,
                 use_web_search=settings.worker_use_web_search,
             )
         if "error" in result or "probability" not in result:
