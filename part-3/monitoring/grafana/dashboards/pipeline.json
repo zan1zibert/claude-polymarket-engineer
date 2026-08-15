@@ -554,6 +554,44 @@
       "targets": [
         { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(claude_stop_reason_total{reason=\"max_tokens\"}[30m])) * 3600", "legendFormat": "max_tokens/hr" }
       ]
+    },
+    {
+      "id": 27,
+      "title": "Groq relevance-check outcomes",
+      "description": "Groq API calls by outcome — HTTP status code on failure, 200 on success. Watch 429 here for rate-limit pressure on the relevance check.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 86 },
+      "fieldConfig": {
+        "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (code) (rate(groq_http_status_total[30m]))", "legendFormat": "{{code}}" }
+      ]
+    },
+    {
+      "id": 28,
+      "title": "Groq 429s / hr",
+      "description": "Rate-limit responses from the Groq relevance check. Sustained non-zero means candidates are being dropped as groq_error and worker_groq_failures_total is climbing — consider backing off request rate or upgrading the Groq tier.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 86 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 1 }
+          ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(groq_http_status_total{code=\"429\"}[30m])) * 3600", "legendFormat": "429/hr" }
+      ]
     }
   ]
 }
