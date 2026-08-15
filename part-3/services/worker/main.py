@@ -172,8 +172,11 @@ def run() -> None:
         signal.signal(sig, lambda *_: stop.__setitem__("flag", True))
 
     log.info(
-        "worker started: model=%s top_k=%d groq_model=%s",
-        settings.anthropic_model, settings.top_k, settings.groq_model,
+        "worker started: model=%s max_tokens=%d top_k=%d groq_model=%s",
+        settings.anthropic_model,
+        settings.anthropic_max_tokens,
+        settings.top_k,
+        settings.groq_model,
     )
 
     while not stop["flag"]:
