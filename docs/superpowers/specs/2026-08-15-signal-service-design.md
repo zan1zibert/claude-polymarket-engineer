@@ -101,12 +101,19 @@ Gates, evaluated in order. The first failure is the recorded reason:
 | Gate | Rule | Default |
 |---|---|---|
 | `market_closed` | market still open | — |
+| `no_belief` | `markets.current_score` is not NULL | — |
 | `no_price` | Gamma returned a YES price | — |
+| `no_end_date` | market has an `end_date` | — |
 | `horizon` | `0 < end_date - now <= max_horizon_days` | 14 days |
 | `conviction` | `belief >= 0.80` or `belief <= 0.20` | 0.80 / 0.20 |
 | `min_edge` | `edge >= min_edge` | 0.05 |
 | `cost_basis_band` | `min_cost_basis <= c <= max_cost_basis` | 0.05 / 0.95 |
-| `position_open` | no open position on this market | — |
+
+`evaluate()` knows nothing about open positions — those gates are all it has. A
+signal firing on a market we already hold is not a rejection: the `signals` row is
+still written, and only the position is skipped (see *Settlement* below). Keeping
+position state out of the pure function is what lets a backtest replay decisions
+without simulating a book.
 
 `expected_roi`, `kelly` and `sharpe` are computed and stored on every fired
 signal but gate nothing. They cost no external calls and are what the sizing
@@ -398,11 +405,15 @@ Following the existing split: pure tests always run; DB tests skip unless
 - Settlement skips positions whose `resolved_outcome` is NULL.
 - Re-running the sweep is idempotent — no duplicate positions, no double P&L.
 
-`tests/test_signal.py` — the loop with a fake dirty-market set and a fake Gamma
-client, mirroring `tests/test_worker.py`. Includes: adding the same market id
-twice leaves one pending entry (the collapse property); `market_for_signal`
-returning the latest `belief_updates` article rather than an older one; a market
-with no `belief_updates` history producing a signal with a NULL `article_url`.
+`tests/test_dirty_markets.py` — the notification channel against an in-memory
+fake redis, mirroring `tests/test_market_snapshot.py`. The load-bearing one:
+adding the same market id three times leaves one pending entry.
+
+`tests/test_signal.py` — the service's wiring with fakes for the DB and Gamma,
+mirroring `tests/test_worker.py`: a fired signal writes both a `signals` row and a
+position; an already-held market writes the row but no position; a rejection
+writes neither; a NO position is entered at `1 - yes_price`, not at `yes_price`;
+the sweep settles before it rescans.
 
 ## Future work
 
