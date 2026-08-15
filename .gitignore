@@ -221,3 +221,6 @@ __marimo__/
 
 # Logs
 /logs/
+
+# Claude Code worktrees (local scratch, never committed)
+.claude/worktrees/
