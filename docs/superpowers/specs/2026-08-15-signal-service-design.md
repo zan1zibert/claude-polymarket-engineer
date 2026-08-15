@@ -146,7 +146,7 @@ market_id      TEXT NOT NULL REFERENCES markets(id)
 market_title   TEXT NOT NULL
 rule           TEXT NOT NULL     -- 'conviction_edge'
 source         TEXT NOT NULL     -- 'belief_update' | 'sweep'
-article_url    TEXT              -- NULL on sweep-triggered signals
+article_url    TEXT              -- newest belief_updates article; NULL if never moved
 belief         DOUBLE PRECISION NOT NULL
 yes_price      DOUBLE PRECISION NOT NULL   -- live Gamma price at decision time
 side           TEXT NOT NULL     -- 'YES' | 'NO'
@@ -194,7 +194,7 @@ CREATE UNIQUE INDEX paper_positions_one_open_idx
     ON paper_positions (market_id) WHERE status = 'open';
 ```
 
-A partial unique index makes double entry impossible even if the queue path and
+A partial unique index makes double entry impossible even if the notification path and
 the sweep path race, or the service restarts mid-cycle. Same instinct as
 `forecast_scores` keying on `market_id` for idempotency.
 
@@ -226,33 +226,72 @@ while not stop:
     if sweep is due:                 # signal_sweep_interval_seconds, default 3600
         settle_resolved_positions()
         rescan_candidates()
-    update = belief_queue.pop(timeout=5)
-    if update:
-        evaluate_one(update.market_id, article_url=update.article_url)
+    market_id = dirty_markets.pop()  # SPOP, non-blocking
+    if market_id:
+        evaluate_one(market_id, source='belief_update')
+    else:
+        stop.wait(timeout=5)         # nothing pending; nap, but wake on shutdown
 ```
 
-The 5-second pop timeout lets the loop wake often enough to notice a due sweep or
-a shutdown signal, the same idiom `lib/queue.py` already documents for the
-worker.
+### The notification channel: a dirty-market set, not a list
+
+The worker's Redis hop changes shape. Because the signal service reads the belief
+from Postgres, the only thing Redis needs to carry is *which markets are dirty*:
+
+```
+worker:  SADD belief_dirty <market_id>
+signal:  SPOP belief_dirty
+```
+
+`SADD` is O(1) and atomic, and a repeat push for a market that is already pending
+is a no-op — so redundant notifications collapse by construction, with no scan
+and no Lua script. (A Redis list cannot do this: `LREM` matches only on exact
+element value, so collapsing would mean `LRANGE`-ing the whole list, parsing
+every payload, and `LREM`-ing matches — O(n) per push and racy.)
+
+What collapsing buys is efficiency, not correctness: the partial unique index
+already prevents duplicate positions. Since belief comes from the DB, evaluating
+the same market three times yields the same verdict three times, so two of the
+three were wasted Gamma calls and duplicate `signals` rows.
+
+Losing FIFO and blocking `BRPOP` costs nothing here — the markets are
+independent, and the loop already wakes every few seconds for the sweep check,
+which is irrelevant latency against price movements measured in hours.
+
+**`BeliefUpdate` is unchanged.** It is one object serving three sinks —
+`db.apply_belief_update` returns it, the worker writes it to the JSONL audit log,
+and it mirrors the `belief_updates` row — so the audit trail keeps `reasoning`
+and both scores. Only the Redis payload shrinks, to a bare market id.
+
+**The Redis key is renamed** from `belief_updates` to `belief_dirty`
+(`BELIEF_DIRTY_KEY`). A set and a list cannot share a key — Redis raises
+`WRONGTYPE` — and the old list has accumulated unread entries since the worker
+started. Renaming makes the leftover list inert rather than fatal, so no manual
+flush is required before first run; it can be deleted whenever.
 
 ### Two entry paths, one evaluation
 
-Both paths call the same `evaluate_one`, and **both read the belief from
-`markets.current_score`** rather than from the queue payload. A payload's
-`new_score` is only a snapshot of the moment it was pushed; if updates queue up,
-acting on the first would use an already-superseded belief. The event contributes
-`article_url` for attribution and nothing else. The paths therefore differ only
-in `source` and whether `article_url` is set.
+Both paths call the same `evaluate_one`, and **both read everything from
+Postgres**: the belief from `markets.current_score`, and the triggering
+`article_url` (plus `reasoning`) from the newest `belief_updates` row for that
+market, which is already indexed on `(market_id, ts DESC)`. Reading the belief
+from the DB rather than a payload matters because a payload's `new_score` is only
+a snapshot of the moment it was pushed — with collapsing, several updates may
+have landed since. The paths therefore differ only in `source`.
 
-- **Queue path** — `BeliefQueue.pop`, then one Gamma call for that market's live
-  price. Belief updates are sporadic, so a per-event call is cheap and exact at
-  decision time.
+- **Notification path** — `SPOP` a dirty market id, then one Gamma call for that
+  market's live price. Belief updates are sporadic, so a per-event call is cheap
+  and exact at decision time.
 - **Sweep path** — candidates are open markets inside the horizon whose
   `current_score` is in a conviction band and which have no open position. Prices
   come from one chunked `polymarket.fetch_statuses` call for all of them. This
   path exists because markets become horizon-eligible through time alone, and
   because edge can appear from price drift with no news at all: our belief sits
   still while the price moves.
+
+Sweep-triggered signals still carry an `article_url` when the market has a
+`belief_updates` history; it is NULL only for markets whose belief has never been
+moved by the worker (belief still equal to `seed_price`).
 
 The sweep reads `closed` and `resolved_outcome` from Postgres, never from Gamma.
 Deciding what "resolved" means is the syncer's job, and two services must not
@@ -263,8 +302,9 @@ disagree about it. The sweep calls Gamma only for candidate prices.
 | File | Change |
 |---|---|
 | `lib/signals.py` | new — `evaluate()`, `Decision`, the side and metric math |
-| `lib/db.py` | add `insert_signal`, `open_position_market_ids`, `settle_positions`, `signal_candidate_markets`, `market_for_signal`, `position_aggregates` |
-| `lib/queue.py` | add `BeliefQueue.pop` (only `push`/`depth` exist today) |
+| `lib/db.py` | add `insert_signal`, `open_position_market_ids`, `settle_positions`, `signal_candidate_markets`, `market_for_signal` (belief + latest triggering article in one query), `position_aggregates` |
+| `lib/queue.py` | replace `BeliefQueue` with `DirtyMarkets` — `add`/`pop`/`depth` over a Redis set (`SADD`/`SPOP`/`SCARD`) |
+| `services/worker/main.py` | one line: push a market id to the set instead of a `BeliefUpdate` blob; DB row and JSONL audit unchanged |
 | `lib/config.py` | the `signal_*` knobs |
 | `lib/metrics.py` | `SIGNAL_*` collectors |
 | `db/migrations/0005_signals_positions.sql` | new |
@@ -272,7 +312,7 @@ disagree about it. The sweep calls Gamma only for candidate prices.
 | `Dockerfile` | new `signal` target |
 | `docker-compose.yml`, `docker-compose.prod.yml` | replace the stub with the real service, `replicas: 1` |
 | `monitoring/prometheus/` | scrape target for the signal service |
-| `README.md` | mark signal built, add a run section, update the layout tree |
+| `README.md` | mark signal built, add a run section, update the layout tree, and replace the `LRANGE belief_updates 0 0` debug command with `SMEMBERS belief_dirty` |
 
 ### Config
 
@@ -288,6 +328,10 @@ All in `lib/config.py`, following the existing `sync_*` / `scorer_*` convention.
 | `signal_max_cost_basis` | `SIGNAL_MAX_COST_BASIS` | 0.95 |
 | `signal_stake` | `SIGNAL_STAKE` | 1.0 |
 | `signal_sweep_interval_seconds` | `SIGNAL_SWEEP_INTERVAL_SECONDS` | 3600 |
+
+Plus one rename: `belief_queue_key` / `BELIEF_QUEUE_KEY` (default `belief_updates`)
+becomes `belief_dirty_key` / `BELIEF_DIRTY_KEY` (default `belief_dirty`), since the
+key now holds a set.
 
 ### Metrics
 
@@ -315,15 +359,21 @@ signal_last_sweep_timestamp
   retries. A failure of the whole chunked fetch is logged and the sweep is
   abandoned for this cycle, matching how the scorer wraps a cycle in
   `try/except` and continues.
-- **A market_id from the queue that is not in `markets`** — rejected with reason
+- **A market_id from the set that is not in `markets`** — rejected with reason
   `unknown_market`. Should not happen (the worker only updates markets that
-  exist) but the queue outlives the DB.
+  exist) but Redis outlives the DB.
 - **Race on the partial unique index** — a duplicate insert is caught and treated
   as `position_open`, not as a crash.
 - **Postgres unavailable at startup** — `_wait_for_db` retry loop, as the scorer
   and syncer already do.
-- **A stale Redis backlog** — out of scope. The existing `belief_updates` list
-  has never had a consumer and will be flushed manually before first run.
+- **The stale `belief_updates` list** — neutralised by the key rename rather than
+  handled. The old list has never had a consumer; nothing reads `belief_dirty`
+  until the worker starts writing it, so there is no backlog to drain and no
+  `WRONGTYPE` collision. The old key can be deleted at leisure.
+- **A dirty market id lost to a crash** — `SPOP` removes before evaluating, so a
+  crash mid-evaluation drops that notification. Acceptable: the sweep re-examines
+  every conviction-band market within the hour, so the only cost is latency, and
+  no position or signal row can be half-written (each is one transaction).
 
 ## Testing
 
@@ -348,8 +398,11 @@ Following the existing split: pure tests always run; DB tests skip unless
 - Settlement skips positions whose `resolved_outcome` is NULL.
 - Re-running the sweep is idempotent — no duplicate positions, no double P&L.
 
-`tests/test_signal.py` — the loop with a fake queue and a fake Gamma client,
-mirroring `tests/test_worker.py`.
+`tests/test_signal.py` — the loop with a fake dirty-market set and a fake Gamma
+client, mirroring `tests/test_worker.py`. Includes: adding the same market id
+twice leaves one pending entry (the collapse property); `market_for_signal`
+returning the latest `belief_updates` article rather than an older one; a market
+with no `belief_updates` history producing a signal with a NULL `article_url`.
 
 ## Future work
 
