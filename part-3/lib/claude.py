@@ -15,7 +15,7 @@ from pathlib import Path
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from lib.metrics import CLAUDE_TOKENS
+from lib.metrics import CLAUDE_STOP_REASON, CLAUDE_TOKENS
 
 load_dotenv()
 
@@ -89,6 +89,8 @@ def reevaluate(
     response = _client.messages.create(**kwargs)
     text = _final_text(response)
     searches = _count_searches(response)
+
+    CLAUDE_STOP_REASON.labels(reason=response.stop_reason or "unknown").inc()
 
     # Record token usage for cost/throughput dashboards. The usage object is
     # always present on a successful response, regardless of parse outcome below.
