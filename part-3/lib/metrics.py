@@ -90,6 +90,12 @@ WORKER_GROQ_FAILURES = Counter(
 CLAUDE_REEVAL_DURATION = Histogram(
     "claude_reeval_duration_seconds", "Wall-clock duration of one Claude re-evaluation call"
 )
+CLAUDE_STOP_REASON = Counter(
+    "claude_stop_reason_total",
+    "Claude response stop_reason per re-evaluation call — watch max_tokens, which "
+    "means the response was truncated (not a clean end_turn/tool_use finish)",
+    ["reason"],
+)
 
 # --- shared external-API token usage ---
 # `type` = input|output for Claude and Groq; `operation` = query|document for Voyage.

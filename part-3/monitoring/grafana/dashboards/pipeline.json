@@ -516,6 +516,44 @@
           "legendFormat": "staleness"
         }
       ]
+    },
+    {
+      "id": 25,
+      "title": "Claude stop_reason breakdown",
+      "description": "Response finish reason per Claude re-eval call. Watch max_tokens — it means the response was truncated mid-generation, not a clean finish.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 78 },
+      "fieldConfig": {
+        "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (reason) (rate(claude_stop_reason_total[30m]))", "legendFormat": "{{reason}}" }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "Claude max_tokens truncations / hr",
+      "description": "Re-eval calls that ended on stop_reason=max_tokens — the response was cut off before the model finished. Sustained non-zero means max_tokens is set too low for this prompt/model.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 78 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 1 }
+          ] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(claude_stop_reason_total{reason=\"max_tokens\"}[30m])) * 3600", "legendFormat": "max_tokens/hr" }
+      ]
     }
   ]
 }
