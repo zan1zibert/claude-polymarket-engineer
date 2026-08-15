@@ -229,6 +229,40 @@ def test_cost_basis_exactly_on_the_floor_fires():
     assert _evaluate(0.15, 0.05).fired    # YES at c = 0.05 exactly
 
 
+def test_cost_basis_exactly_on_a_tuned_floor_fires():
+    """min_cost_basis is a config knob, not just the 0.05 default -- 0.20 is the
+    value the design singles out as where the "market overconfidence" trade
+    class disappears, so it must be reachable exactly, not off-by-a-ULP.
+
+    1.0 - 0.80 == 0.19999999999999996 in IEEE-754, a hair under 0.20, so a
+    literal `>= min_cost_basis` comparison would silently reject this
+    legitimate boundary bet.
+    """
+    floor_20 = signals.Thresholds(
+        min_edge=0.05, min_conviction_high=0.80, max_conviction_low=0.20,
+        max_horizon_days=14, min_cost_basis=0.20, max_cost_basis=0.95,
+    )
+    d = _evaluate(0.15, 0.80, thresholds=floor_20)
+    assert d.fired
+    assert d.side == "NO"
+    assert d.cost_basis == pytest.approx(0.20)
+
+
+def test_cost_basis_exactly_on_a_tuned_ceiling_fires():
+    """Mirror case on the max_cost_basis end: 1.0 - 0.70 == 0.30000000000000004,
+    a hair OVER 0.30, so a literal `<= max_cost_basis` comparison would
+    silently reject this legitimate boundary bet too.
+    """
+    ceiling_30 = signals.Thresholds(
+        min_edge=0.05, min_conviction_high=0.80, max_conviction_low=0.20,
+        max_horizon_days=14, min_cost_basis=0.05, max_cost_basis=0.30,
+    )
+    d = _evaluate(0.05, 0.70, thresholds=ceiling_30)
+    assert d.fired
+    assert d.side == "NO"
+    assert d.cost_basis == pytest.approx(0.30)
+
+
 # --- gate ordering -------------------------------------------------------
 
 def test_first_failing_gate_wins():
@@ -241,6 +275,40 @@ def test_conviction_is_checked_before_edge():
     """Mid-conviction with a huge edge reports conviction, not min_edge."""
     d = _evaluate(0.55, 0.15)
     assert d.reason == "conviction"
+
+
+def test_gate_order_pinned_through_missing_inputs_and_horizon():
+    """Adjacent-pair pins for the no_belief -> no_price -> no_end_date -> horizon
+    chain: only market_closed and conviction-before-edge were pinned before,
+    leaving this chain free to silently reorder. Each case below violates two
+    gates at once; the earlier gate's reason must always win, otherwise the
+    signal_rejected_total{reason} metric would attribute the rejection to the
+    wrong filter.
+    """
+    valid_end = NOW + timedelta(days=7)
+    too_far_end = NOW + timedelta(days=30)
+
+    # no_belief precedes no_price: both are missing.
+    d = signals.evaluate(belief=None, yes_price=None, end_date=valid_end,
+                         now=NOW, closed=False, thresholds=THRESHOLDS)
+    assert d.reason == "no_belief"
+
+    # no_price precedes no_end_date: both are missing.
+    d = signals.evaluate(belief=0.85, yes_price=None, end_date=None,
+                         now=NOW, closed=False, thresholds=THRESHOLDS)
+    assert d.reason == "no_price"
+
+    # no_end_date precedes horizon: end_date is missing outright, which a
+    # horizon check running first would crash on (None arithmetic) rather
+    # than merely misreport -- no_end_date must run first either way.
+    d = signals.evaluate(belief=0.85, yes_price=0.75, end_date=None,
+                         now=NOW, closed=False, thresholds=THRESHOLDS)
+    assert d.reason == "no_end_date"
+
+    # horizon precedes conviction: end_date out of range AND mid-conviction.
+    d = signals.evaluate(belief=0.55, yes_price=0.55, end_date=too_far_end,
+                         now=NOW, closed=False, thresholds=THRESHOLDS)
+    assert d.reason == "horizon"
 
 
 # --- degenerate inputs ---------------------------------------------------

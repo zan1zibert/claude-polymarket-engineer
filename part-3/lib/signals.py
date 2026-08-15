@@ -56,13 +56,16 @@ RULE_CONVICTION_EDGE = "conviction_edge"
 # raise ZeroDivisionError inside a service loop.
 _SHARPE_EPS = 1e-9
 
-# Binary floats can't represent 0.80, 0.85, 0.15, etc. exactly, so an edge that is
-# conceptually exactly at min_edge (e.g. belief=0.85, price=0.80) can land a few
-# ULPs below it (0.04999999999999993 rather than 0.05). Without this tolerance the
-# `min_edge` gate would reject the "exactly at threshold" boundary case the design
-# doc and tests treat as inclusive. It is intentionally far smaller than any
-# threshold value in Thresholds, so it never masks a real edge shortfall.
-_EDGE_EPS = 1e-9
+# Binary floats can't represent 0.80, 0.85, 0.20, etc. exactly, so a quantity that
+# is conceptually exactly at a threshold can land a few ULPs to the wrong side of
+# it: 0.85 - 0.80 == 0.04999999999999993 (undershoots an edge threshold of 0.05),
+# and 1.0 - 0.80 == 0.19999999999999996 (undershoots a cost-basis floor of 0.20).
+# Every inclusive threshold comparison in this module (min_edge, and both ends of
+# the cost-basis band) needs this tolerance for the same reason: none of them
+# would otherwise treat their own boundary as inclusive, which the design and
+# tests require. It is intentionally far smaller than any realistic threshold
+# gap, so it never masks a real shortfall — only sub-ULP float noise.
+_BOUNDARY_EPS = 1e-9
 
 SIDE_YES = "YES"
 SIDE_NO = "NO"
@@ -147,9 +150,11 @@ def evaluate(
         side, cost_basis, win_prob = SIDE_NO, 1.0 - yes_price, 1.0 - belief
     edge = win_prob - cost_basis
 
-    if edge < thresholds.min_edge - _EDGE_EPS:
+    if edge < thresholds.min_edge - _BOUNDARY_EPS:
         return _reject("min_edge", horizon_days=horizon_days)
-    if not (thresholds.min_cost_basis <= cost_basis <= thresholds.max_cost_basis):
+    if not (thresholds.min_cost_basis - _BOUNDARY_EPS
+            <= cost_basis
+            <= thresholds.max_cost_basis + _BOUNDARY_EPS):
         return _reject("cost_basis_band", horizon_days=horizon_days)
 
     # Derived metrics are computed only after the band gate, which is what makes
