@@ -56,6 +56,7 @@ def test_process_article_only_reevaluates_relevant_candidates(tmp_path):
     assert mock_reeval.call_count == 1
     assert db.apply_belief_update.call_count == 1
     assert db.apply_belief_update.call_args.args[0] == "m1"
+    dirty_markets.add.assert_called_once_with("m1")
 
 
 def test_process_article_logs_a_relevance_check_per_candidate(tmp_path):
@@ -77,6 +78,7 @@ def test_process_article_logs_a_relevance_check_per_candidate(tmp_path):
     call_args = db.log_relevance_check.call_args.args
     assert call_args[3] is False  # relevant
     assert call_args[4] == "different event"  # reasoning
+    dirty_markets.add.assert_not_called()
 
 
 def test_process_article_treats_groq_failure_as_not_relevant(tmp_path):
