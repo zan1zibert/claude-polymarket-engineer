@@ -70,7 +70,3 @@ CREATE TABLE IF NOT EXISTS paper_positions (
 -- legitimate re-entry after settlement.
 CREATE UNIQUE INDEX IF NOT EXISTS paper_positions_one_open_idx
     ON paper_positions (market_id) WHERE status = 'open';
-
--- The settlement work queue: open positions, joined to their market's outcome.
-CREATE INDEX IF NOT EXISTS paper_positions_open_idx
-    ON paper_positions (market_id) WHERE status = 'open';
