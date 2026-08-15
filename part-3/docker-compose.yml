@@ -127,7 +127,34 @@ services:
     deploy:
       replicas: 1
 
-  prometheus:    # scrapes /metrics from feeder/worker/syncer/scorer over the internal network
+  signal:        # SINGLETON: mutates positions, do not scale
+    build:
+      context: .
+      target: signal
+    # Tuning knobs (SIGNAL_MIN_EDGE etc.) are intentionally NOT interpolated
+    # here: Compose fills an unset ${VAR} with an empty string rather than
+    # omitting it, and lib/config.py's float()/int() parsing of "" raises —
+    # the code's own default never gets a chance to apply. lib/config.py stays
+    # the single source of defaults; to override a knob, add it explicitly
+    # below (see .env.example for the list).
+    environment:
+      DATABASE_URL: postgresql://pm:pm@postgres:5432/pm
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # SINGLETON — it owns the position book. The partial unique index on
+    # paper_positions would stop a second instance double-entering, but two
+    # instances would still duplicate Gamma calls and signal rows for nothing.
+    deploy:
+      replicas: 1
+
+  prometheus:    # scrapes /metrics from feeder/worker/syncer/scorer/signal over the internal network
     image: prom/prometheus:latest
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -143,6 +170,7 @@ services:
       - worker
       - syncer
       - scorer
+      - signal
     restart: unless-stopped
 
   grafana:       # dashboards; datasources + dashboards are provisioned on startup
@@ -167,11 +195,6 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-
-  # --- added later ---
-  # signal:        # SINGLETON: mutates positions, do not scale
-  #   build: { context: ., target: signal }
-  #   deploy: { replicas: 1 }
 
 volumes:
   redis_data:
