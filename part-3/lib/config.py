@@ -20,7 +20,7 @@ class Settings:
 
     # --- worker (market analyzer) ---
     database_url: str
-    belief_queue_key: str        # second Redis list: worker -> signal
+    belief_dirty_key: str        # Redis SET of market ids: worker -> signal
     anthropic_model: str
     anthropic_max_tokens: int
     voyage_api_key: str
@@ -71,8 +71,12 @@ def load_settings() -> Settings:
         database_url=os.environ.get(
             "DATABASE_URL", "postgresql://pm:pm@localhost:5432/pm"
         ),
-        belief_queue_key=os.environ.get("BELIEF_QUEUE_KEY", "belief_updates"),
-        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5"),
+        # Renamed from BELIEF_QUEUE_KEY / `belief_updates`: the key now holds a
+        # SET, and a set cannot share a key with the old list (Redis raises
+        # WRONGTYPE). Renaming makes the stale, never-consumed list inert instead
+        # of fatal, so no manual flush is needed before first run.
+        belief_dirty_key=os.environ.get("BELIEF_DIRTY_KEY", "belief_dirty"),
+        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
         anthropic_max_tokens=int(os.environ.get("ANTHROPIC_MAX_TOKENS", "8192")),
         voyage_api_key=os.environ.get("VOYAGE_API_KEY", ""),
         voyage_model=os.environ.get("VOYAGE_MODEL", "voyage-3.5"),

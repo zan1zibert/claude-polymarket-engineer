@@ -38,6 +38,10 @@ FEEDER_ARTICLES_PUSHED = Counter(
 NEWS_QUEUE_DEPTH = Gauge(
     "news_queue_depth", "Current depth of the news queue (LLEN)"
 )
+BELIEF_DIRTY_DEPTH = Gauge(
+    "belief_dirty_depth",
+    "Markets pending evaluation by the signal service (SCARD of the dirty set)",
+)
 
 # --- worker ---
 WORKER_ARTICLES_PROCESSED = Counter(
