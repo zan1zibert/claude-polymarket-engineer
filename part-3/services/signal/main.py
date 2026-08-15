@@ -138,7 +138,10 @@ def evaluate_market(
         stake=settings.signal_stake,
     )
     if not opened:
-        metrics.SIGNAL_REJECTED.labels(reason="position_open").inc()
+        # Not counted in signal_rejected_total: the gates passed here (the
+        # signals row above proves it), so this is not what that metric is
+        # for. It is also redundant with signal_fired_total minus
+        # signal_positions_opened_total.
         log.info(
             "signal on %s (%s, edge %+.3f) — position already open, no entry",
             market["market_id"], decision.side, decision.edge,

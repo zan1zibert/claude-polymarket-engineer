@@ -205,6 +205,23 @@ def test_candidates_exclude_beyond_horizon_and_already_ended():
     assert "utest_gB" not in ids
 
 
+def test_candidates_include_sub_day_horizon_when_max_horizon_is_fractional():
+    """max_horizon_days is a float; truncating it to whole days would make this
+    prefilter disagree with evaluate(), silently disabling the sweep for any
+    sub-day setting. A market 10 hours out must survive max_horizon_days=0.5.
+    """
+    mid = "utest_gD"
+    soon = datetime.now(timezone.utc) + timedelta(hours=10)
+    _seed_market(mid, current_score=0.85, end_date=soon)
+    ids = {
+        r["market_id"]
+        for r in _db().signal_candidate_markets(
+            min_conviction_high=0.80, max_conviction_low=0.20, max_horizon_days=0.5
+        )
+    }
+    assert mid in ids
+
+
 def test_candidates_exclude_closed_markets():
     _seed_market("utest_gC", current_score=0.85, closed=True,
                  end_date=datetime.now(timezone.utc) + timedelta(days=5))

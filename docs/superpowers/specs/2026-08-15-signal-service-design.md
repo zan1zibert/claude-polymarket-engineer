@@ -309,7 +309,7 @@ disagree about it. The sweep calls Gamma only for candidate prices.
 | File | Change |
 |---|---|
 | `lib/signals.py` | new — `evaluate()`, `Decision`, the side and metric math |
-| `lib/db.py` | add `insert_signal`, `open_position_market_ids`, `settle_positions`, `signal_candidate_markets`, `market_for_signal` (belief + latest triggering article in one query), `position_aggregates` |
+| `lib/db.py` | add `insert_signal`, `settle_positions`, `signal_candidate_markets`, `market_for_signal` (belief + latest triggering article in one query), `position_aggregates`; no separate "which markets have an open position" lookup — `signal_candidate_markets` excludes them via a `NOT EXISTS` against `paper_positions`, and `open_position` relies on the partial unique index to reject a second open position, so there is no read-then-write race to guard against |
 | `lib/queue.py` | replace `BeliefQueue` with `DirtyMarkets` — `add`/`pop`/`depth` over a Redis set (`SADD`/`SPOP`/`SCARD`) |
 | `services/worker/main.py` | one line: push a market id to the set instead of a `BeliefUpdate` blob; DB row and JSONL audit unchanged |
 | `lib/config.py` | the `signal_*` knobs |

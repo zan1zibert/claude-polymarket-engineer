@@ -151,6 +151,34 @@ def test_thresholds_are_taken_from_settings():
     ) == "fired"
 
 
+# --- evaluate_notified ---------------------------------------------------
+
+def test_evaluate_notified_on_a_known_market_fires_and_opens_a_position(monkeypatch):
+    db = _FakeDb({"m1": _market("m1")})
+    monkeypatch.setattr(signal_service.polymarket, "fetch_statuses",
+                        _prices({"m1": 0.75}))
+
+    outcome = signal_service.evaluate_notified(db, object(), _settings(), "m1")
+
+    assert outcome == "fired"
+    assert len(db.signals) == 1
+    assert db.signals[0]["source"] == "belief_update"
+    assert len(db.positions) == 1
+
+
+def test_evaluate_notified_on_an_unknown_market_writes_nothing(monkeypatch):
+    db = _FakeDb({})
+    monkeypatch.setattr(signal_service.polymarket, "fetch_statuses", _prices({}))
+
+    outcome = signal_service.evaluate_notified(
+        db, object(), _settings(), "m_missing"
+    )
+
+    assert outcome == "unknown_market"
+    assert db.signals == []
+    assert db.positions == []
+
+
 # --- sweep_once ---------------------------------------------------------
 
 def test_sweep_settles_then_rescans(monkeypatch):

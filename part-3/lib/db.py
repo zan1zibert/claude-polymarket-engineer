@@ -529,13 +529,18 @@ class Db:
                   AND (m.current_score >= %s OR m.current_score <= %s)
                   AND m.end_date IS NOT NULL
                   AND m.end_date > now()
-                  AND m.end_date <= now() + make_interval(days => %s)
+                  AND m.end_date <= now() + make_interval(secs => %s)
                   AND NOT EXISTS (
                       SELECT 1 FROM paper_positions p
                       WHERE p.market_id = m.id AND p.status = 'open'
                   )
                 """,
-                (min_conviction_high, max_conviction_low, int(max_horizon_days)),
+                # secs, not days: max_horizon_days is a float (e.g. 0.5 for
+                # same-day-only), and truncating it to whole days here would
+                # make this prefilter disagree with evaluate(), which is the
+                # actual authority on the horizon gate.
+                (min_conviction_high, max_conviction_low,
+                 max_horizon_days * 86400.0),
             )
             return [self._market_row(r) for r in cur.fetchall()]
 
