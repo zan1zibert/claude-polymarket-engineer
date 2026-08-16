@@ -86,7 +86,7 @@ def load_settings() -> Settings:
         # WRONGTYPE). Renaming makes the stale, never-consumed list inert instead
         # of fatal, so no manual flush is needed before first run.
         belief_dirty_key=os.environ.get("BELIEF_DIRTY_KEY", "belief_dirty"),
-        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5"),
         anthropic_max_tokens=int(os.environ.get("ANTHROPIC_MAX_TOKENS", "8192")),
         voyage_api_key=os.environ.get("VOYAGE_API_KEY", ""),
         voyage_model=os.environ.get("VOYAGE_MODEL", "voyage-3.5"),
