@@ -7,8 +7,8 @@ For each article on the news queue:
   3. For each matched market, ask Claude — price-blind — to update our prior in
      light of the news.
   4. Atomically swap the stored score and append a belief_updates row.
-  5. Fan the transition out to the belief_updates queue (for the signal service)
-     and to an append-only audit log.
+  5. Mark the market dirty for the signal service and fan the transition out
+     to an append-only audit log.
 
 SCALABLE: run several of these (docker compose up --scale worker=3). They share
 the queue via BRPOP and the per-market row lock keeps concurrent score swaps honest.
@@ -34,7 +34,7 @@ from lib.db import Db
 from lib.embeddings import Embedder
 from lib.groq_relevance import check_relevance
 from lib import metrics
-from lib.queue import BeliefQueue, NewsQueue
+from lib.queue import DirtyMarkets, NewsQueue
 from lib.schemas import Article, BeliefUpdate
 
 logging.basicConfig(
@@ -69,7 +69,7 @@ def process_article(
     article: Article,
     db: Db,
     embedder: Embedder,
-    belief_queue: BeliefQueue,
+    dirty_markets: DirtyMarkets,
     settings: Settings,
 ) -> None:
     src = article.source
@@ -133,7 +133,11 @@ def process_article(
         reasoning = result.get("reasoning", "")
         update = db.apply_belief_update(market.id, new_score, article.url, reasoning)
 
-        belief_queue.push(update)
+        # Notify the signal service. Only the id travels: it reads the belief from
+        # markets.current_score and the article from belief_updates itself, so a
+        # payload here could only go stale. The DB row and the JSONL audit log
+        # below still carry the full update.
+        dirty_markets.add(market.id)
         metrics.WORKER_BELIEF_UPDATES.labels(source=src).inc()
         # Did this re-eval actually shift the belief? A first eval (no prior) counts
         # as a move — it establishes a belief. This separates informative sources
@@ -157,7 +161,7 @@ def run() -> None:
     settings = load_settings()
 
     queue = NewsQueue(settings.redis_url, settings.queue_key)
-    belief_queue = BeliefQueue(settings.redis_url, settings.belief_queue_key)
+    dirty_markets = DirtyMarkets(settings.redis_url, settings.belief_dirty_key)
     _wait_for("redis", queue.ping)
 
     db = Db(settings.database_url)
@@ -184,7 +188,7 @@ def run() -> None:
             article = queue.pop(timeout=POP_TIMEOUT_SECONDS)
             if article is None:
                 continue  # timeout — loop back to check the shutdown flag
-            process_article(article, db, embedder, belief_queue, settings)
+            process_article(article, db, embedder, dirty_markets, settings)
         except Exception:
             log.exception("failed processing article")
 

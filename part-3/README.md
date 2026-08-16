@@ -25,15 +25,17 @@ turns large disagreements with the market into trade signals.
 - **feeder** — polls RSS, dedups, pushes fresh articles to Redis. *Dumb on purpose.*
 - **worker** — embeds news, retrieves candidate markets (pgvector), asks Claude
   for a price-blind probability, updates beliefs, logs the transition. *Scale this one.*
-- **signal** — reads belief updates, fetches live Polymarket price, applies edge/
-  conviction filters, records intended trades. *Singleton — mutates positions.*
+- **signal** — reads the dirty-market set, fetches the live Polymarket price,
+  applies the edge / conviction / cost-basis filters, records every fired signal
+  and opens a flat-stake **paper** position that settles against the outcome.
+  *Singleton — it owns the position book. No real order is ever placed.*
 
 Monorepo, multiple images: one shared `base` stage (`lib/`) + a thin stage per
 service, selected via `target:` in `docker-compose.yml`.
 
 - **worker** is **price-blind**: it never sees the live Polymarket price. The
   "current score" it updates is *our own* prior belief, stored in Postgres. Only
-  the (future) `signal` service compares against price.
+  the `signal` service compares against price.
 
 - **scorer** — once a market resolves, grades our final belief (and the market's
   ingest price as a baseline) against the outcome with Brier + log-loss, and
@@ -43,8 +45,8 @@ service, selected via `target:` in `docker-compose.yml`.
 ## What's built so far
 
 The **feeder**, **Redis**, **Postgres + pgvector**, the **worker** (market
-analyzer), the **syncer** (market ingestion), and the **scorer** (grades resolved
-markets). The `signal` service is still stubbed in the compose file.
+analyzer), the **syncer** (market ingestion), the **scorer** (grades resolved
+markets), and the **signal** service (belief vs live price -> paper positions).
 
 `db/seed_markets.py` remains as a quick fixture loader for smoke-testing the
 worker without running the syncer.
@@ -95,7 +97,7 @@ Inspect the outputs of a re-evaluation — all three should agree:
 
 ```sh
 docker compose exec postgres psql -U pm -d pm -c 'SELECT market_id, previous_score, new_score FROM belief_updates ORDER BY ts DESC LIMIT 5;'
-docker compose exec redis redis-cli LRANGE belief_updates 0 0   # newest event for signal
+docker compose exec redis redis-cli SMEMBERS belief_dirty       # markets awaiting the signal service
 docker compose exec worker cat /data/belief_updates.jsonl       # append-only audit log
 ```
 
@@ -207,6 +209,57 @@ The same numbers are exposed to Prometheus as `forecast_brier_mean`,
 idempotent (one row per market, keyed by `market_id`), so re-running is a no-op
 for markets already in `forecast_scores`.
 
+## Run the signal service
+
+The signal service is the only one that sees a live Polymarket price. It reads
+our belief from Postgres, compares it against Gamma, and opens **paper**
+positions — nothing here places a real order.
+
+```sh
+cd part-3
+docker compose up --build signal     # starts postgres + redis + migrate + signal
+docker compose logs -f signal        # watch "OPEN NO 12345 @ 0.150 ... edge +0.100"
+```
+
+One cycle on the host (needs `DATABASE_URL` + `REDIS_URL`):
+
+```sh
+pip install -r requirements.txt
+python -m services.signal.main --once   # one settle + rescan sweep, then exit
+python -m services.signal.main          # run forever
+```
+
+Inspect the decisions and the book:
+
+```sh
+docker compose exec postgres psql -U pm -d pm -c \
+  'SELECT market_id, side, round(belief::numeric,2) AS belief,
+          round(yes_price::numeric,2) AS price, round(edge::numeric,3) AS edge,
+          round(cost_basis::numeric,2) AS cost, round(expected_roi::numeric,2) AS roi,
+          source
+   FROM signals ORDER BY ts DESC LIMIT 10;'
+
+docker compose exec postgres psql -U pm -d pm -c \
+  'SELECT status, count(*), round(sum(pnl)::numeric, 2) AS pnl
+   FROM paper_positions GROUP BY status;'
+```
+
+A signal fires only when all of these hold: our belief is at/above
+`SIGNAL_MIN_CONVICTION_HIGH` or at/below `SIGNAL_MAX_CONVICTION_LOW`, the market
+resolves within `SIGNAL_MAX_HORIZON_DAYS`, the edge on the side we would buy is
+at least `SIGNAL_MIN_EDGE`, and that side's cost basis is inside
+`[SIGNAL_MIN_COST_BASIS, SIGNAL_MAX_COST_BASIS]`.
+
+`SIGNAL_MIN_COST_BASIS` is the risk dial. A cost basis below 0.5 means we are
+buying the underdog: high expected return per euro, low hit rate, high variance.
+Raising the floor trades return for hit rate. `signal_rejected_total{reason}` in
+Prometheus shows which gate is doing the filtering.
+
+Note that the conviction band does **not** pick a side — direction is
+`sign(belief - price)`. A confident 0.80 belief against a market at 0.85 buys NO,
+because the market is more extreme than we are. See
+`docs/superpowers/specs/2026-08-15-signal-service-design.md` for the reasoning.
+
 ## Dashboards
 
 Two Grafana dashboards, split by audience rather than by service:
@@ -245,11 +298,13 @@ lib/                shared, importable package
   polymarket.py     Gamma API client (fetch fresh markets + resolution status)
   db.py             Postgres + pgvector access (top-k, score swap, sync, resolve, score)
   scoring.py        pure Brier / log-loss / skill / reliability-bin functions
+  signals.py        pure edge / cost-basis / Kelly decision math
   claude.py         price-blind re-evaluation call
 services/feeder/    the RSS poller (producer)
 services/worker/    the market analyzer (consumer, scalable)
 services/syncer/    the market ingestion service (singleton)
 services/scorer/    grades resolved markets against the outcome (singleton)
+services/signal/    belief vs live price -> paper positions (singleton)
 prompts/            worker system + re-eval prompt templates
 db/                 migrations/ (versioned schema) + migrate.py (runner) + seed_markets.py (dev fixtures)
 Dockerfile          multi-stage: base + per-service targets

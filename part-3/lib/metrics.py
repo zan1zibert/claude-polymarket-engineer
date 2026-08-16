@@ -38,6 +38,10 @@ FEEDER_ARTICLES_PUSHED = Counter(
 NEWS_QUEUE_DEPTH = Gauge(
     "news_queue_depth", "Current depth of the news queue (LLEN)"
 )
+BELIEF_DIRTY_DEPTH = Gauge(
+    "belief_dirty_depth",
+    "Markets pending evaluation by the signal service (SCARD of the dirty set)",
+)
 
 # --- worker ---
 WORKER_ARTICLES_PROCESSED = Counter(
@@ -188,6 +192,45 @@ FORECAST_SCORED_MARKETS = Gauge(
 # get a staleness gauge, same pattern as SYNCER_LAST_SYNC_TIMESTAMP above.
 SCORER_LAST_RUN_TIMESTAMP = Gauge(
     "scorer_last_run_timestamp_seconds", "Unix time of the last completed scorer cycle"
+)
+
+
+# --- signal (belief vs live price -> paper positions) ---
+SIGNAL_EVALUATED = Counter(
+    "signal_evaluated_total", "Markets run through the decision function",
+    ["source"],
+)
+SIGNAL_REJECTED = Counter(
+    "signal_rejected_total",
+    "Candidates that failed a gate, by the first gate they failed",
+    ["reason"],
+)
+SIGNAL_FIRED = Counter(
+    "signal_fired_total", "Signals that passed every gate",
+    ["side", "rule"],
+)
+SIGNAL_POSITIONS_OPENED = Counter(
+    "signal_positions_opened_total", "Paper positions opened",
+    ["side"],
+)
+SIGNAL_POSITIONS_SETTLED = Counter(
+    "signal_positions_settled_total", "Paper positions settled against an outcome"
+)
+SIGNAL_POSITIONS_OPEN = Gauge(
+    "signal_positions_open", "Paper positions currently open"
+)
+SIGNAL_PNL_TOTAL = Gauge(
+    "signal_pnl_total", "Realised paper P&L in euros across all settled positions"
+)
+SIGNAL_WIN_RATE = Gauge(
+    "signal_win_rate", "Share of settled paper positions that were profitable"
+)
+SIGNAL_ROI = Gauge(
+    "signal_roi", "Realised paper P&L divided by total stake on settled positions"
+)
+SIGNAL_LAST_SWEEP_TIMESTAMP = Gauge(
+    "signal_last_sweep_timestamp",
+    "Unix timestamp of the last completed settle + rescan sweep",
 )
 
 

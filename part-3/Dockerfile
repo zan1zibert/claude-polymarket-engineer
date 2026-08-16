@@ -41,4 +41,7 @@ FROM base AS migrate
 COPY db/ ./db/
 CMD ["python", "db/migrate.py"]
 
-# ---- signal stage will be added here as we build it ----
+# ---- signal (singleton: belief vs live price -> paper positions) ----
+FROM base AS signal
+COPY services/signal/ ./services/signal/
+CMD ["python", "-m", "services.signal.main"]

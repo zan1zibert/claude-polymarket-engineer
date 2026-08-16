@@ -20,7 +20,7 @@ class Settings:
 
     # --- worker (market analyzer) ---
     database_url: str
-    belief_queue_key: str        # second Redis list: worker -> signal
+    belief_dirty_key: str        # Redis SET of market ids: worker -> signal
     anthropic_model: str
     anthropic_max_tokens: int
     voyage_api_key: str
@@ -45,6 +45,16 @@ class Settings:
 
     # --- scorer (grades resolved markets) ---
     scorer_interval_seconds: int     # how often to grade newly-resolved markets
+
+    # --- signal (belief vs live price -> paper positions) ---
+    signal_min_edge: float                  # noise floor: is the disagreement real
+    signal_min_conviction_high: float       # belief >= this counts as confident YES-ish
+    signal_max_conviction_low: float        # belief <= this counts as confident NO-ish
+    signal_max_horizon_days: float          # only bet markets resolving this soon
+    signal_min_cost_basis: float            # THE risk dial: raise it to drop longshots
+    signal_max_cost_basis: float            # defensive ceiling on the expensive side
+    signal_stake: float                     # euros per paper position (flat, for now)
+    signal_sweep_interval_seconds: int      # settle + rescan cadence
 
     # --- dynamic market feeds (feeder second loop) ---
     market_feed_poll_interval_seconds: int   # dynamic-loop interval
@@ -71,7 +81,11 @@ def load_settings() -> Settings:
         database_url=os.environ.get(
             "DATABASE_URL", "postgresql://pm:pm@localhost:5432/pm"
         ),
-        belief_queue_key=os.environ.get("BELIEF_QUEUE_KEY", "belief_updates"),
+        # Renamed from BELIEF_QUEUE_KEY / `belief_updates`: the key now holds a
+        # SET, and a set cannot share a key with the old list (Redis raises
+        # WRONGTYPE). Renaming makes the stale, never-consumed list inert instead
+        # of fatal, so no manual flush is needed before first run.
+        belief_dirty_key=os.environ.get("BELIEF_DIRTY_KEY", "belief_dirty"),
         anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5"),
         anthropic_max_tokens=int(os.environ.get("ANTHROPIC_MAX_TOKENS", "8192")),
         voyage_api_key=os.environ.get("VOYAGE_API_KEY", ""),
@@ -108,4 +122,19 @@ def load_settings() -> Settings:
             os.environ.get("MARKET_FEED_MAX_CONCURRENCY", "8")),
         market_feed_freshness_window_minutes=int(
             os.environ.get("MARKET_FEED_FRESHNESS_WINDOW_MINUTES", "180")),
+        signal_min_edge=float(os.environ.get("SIGNAL_MIN_EDGE", "0.05")),
+        signal_min_conviction_high=float(
+            os.environ.get("SIGNAL_MIN_CONVICTION_HIGH", "0.80")),
+        signal_max_conviction_low=float(
+            os.environ.get("SIGNAL_MAX_CONVICTION_LOW", "0.20")),
+        signal_max_horizon_days=float(os.environ.get("SIGNAL_MAX_HORIZON_DAYS", "14")),
+        # c < 0.5 means buying the underdog, so this floor is the risk/reward dial:
+        # raising it trades expected ROI for hit rate. 0.05 mirrors the syncer's
+        # ingestion price band — the price moves after ingest, so the gate is
+        # re-applied at decision time.
+        signal_min_cost_basis=float(os.environ.get("SIGNAL_MIN_COST_BASIS", "0.05")),
+        signal_max_cost_basis=float(os.environ.get("SIGNAL_MAX_COST_BASIS", "0.95")),
+        signal_stake=float(os.environ.get("SIGNAL_STAKE", "1.0")),
+        signal_sweep_interval_seconds=int(
+            os.environ.get("SIGNAL_SWEEP_INTERVAL_SECONDS", "3600")),
     )

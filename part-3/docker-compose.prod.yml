@@ -63,6 +63,11 @@ services:
     environment:
       DATABASE_URL: postgresql://pm:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/pm
 
+  signal:
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgresql://pm:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/pm
+
   prometheus:
     restart: unless-stopped
     logging: *default-logging

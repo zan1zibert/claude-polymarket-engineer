@@ -24,6 +24,15 @@ takes a row lock (`SELECT ... FOR UPDATE`), serialising writes per market and
 re-reading the true prior under the lock so the audit chain stays truthful. The
 expensive Claude call happens OUTSIDE this lock (see services/worker/main.py),
 so the lock is held only for the two quick writes.
+
+Operations the signal service needs (services/signal/):
+  - market_for_signal        : one market's belief/horizon + its newest article
+  - signal_candidate_markets : the sweep's work list (conviction band, in horizon,
+                               no open position)
+  - insert_signal            : record a fired signal, returns its id
+  - open_position            : open a €1 paper position (False if one is open)
+  - settle_positions         : book P&L on positions whose market has resolved
+  - position_aggregates      : book-wide totals for the Prometheus gauges
 """
 from datetime import datetime, timezone
 from typing import Optional
@@ -447,4 +456,229 @@ class Db:
                 "brier_baseline": b_base,
                 "logloss_baseline": ll_base,
                 "count": n,
+            }
+
+    # ------------------------------------------------------------ signal service
+
+    # A market's belief and horizon, plus the article that last moved the belief.
+    # The LATERAL join is the "newest child row" idiom; belief_updates already has
+    # a (market_id, ts DESC) index, so it is an index scan of one row per market.
+    _MARKET_SELECT = """
+        SELECT m.id, m.question, m.current_score, m.end_date, m.closed,
+               b.article_url
+        FROM markets m
+        LEFT JOIN LATERAL (
+            SELECT article_url
+            FROM belief_updates
+            WHERE market_id = m.id
+            ORDER BY ts DESC
+            LIMIT 1
+        ) b ON TRUE
+    """
+
+    @staticmethod
+    def _market_row(r) -> dict:
+        return {
+            "market_id": r[0],
+            "question": r[1],
+            "current_score": r[2],
+            "end_date": r[3],
+            "closed": r[4],
+            "article_url": r[5],
+        }
+
+    def market_for_signal(self, market_id: str) -> Optional[dict]:
+        """Everything the decision needs about one market, or None if unknown.
+
+        The signal service reads the belief from here rather than from the Redis
+        notification: with repeat notifications collapsing, a payload's score
+        could be several updates stale by the time it is popped, while
+        current_score is by definition the latest.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(self._MARKET_SELECT + " WHERE m.id = %s", (market_id,))
+            row = cur.fetchone()
+            return None if row is None else self._market_row(row)
+
+    def signal_candidate_markets(
+        self,
+        *,
+        min_conviction_high: float,
+        max_conviction_low: float,
+        max_horizon_days: float,
+    ) -> list[dict]:
+        """The sweep's work list: markets worth re-examining right now.
+
+        Two reasons this exists rather than relying on the notification path
+        alone. A market crosses into the horizon window purely by the passage of
+        time (the syncer ingests up to ~2 months out), and edge can appear from
+        the price drifting while our belief sits still — neither produces a belief
+        update, so neither would ever wake the consumer.
+
+        The band and horizon filters are duplicated here and in lib.signals for
+        different jobs: this one keeps the sweep from fetching prices for
+        thousands of hopeless markets, and evaluate() is still the single
+        authority on the verdict.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                self._MARKET_SELECT
+                + """
+                WHERE NOT m.closed
+                  AND m.current_score IS NOT NULL
+                  AND (m.current_score >= %s OR m.current_score <= %s)
+                  AND m.end_date IS NOT NULL
+                  AND m.end_date > now()
+                  AND m.end_date <= now() + make_interval(secs => %s)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM paper_positions p
+                      WHERE p.market_id = m.id AND p.status = 'open'
+                  )
+                """,
+                # secs, not days: max_horizon_days is a float (e.g. 0.5 for
+                # same-day-only), and truncating it to whole days here would
+                # make this prefilter disagree with evaluate(), which is the
+                # actual authority on the horizon gate.
+                (min_conviction_high, max_conviction_low,
+                 max_horizon_days * 86400.0),
+            )
+            return [self._market_row(r) for r in cur.fetchall()]
+
+    def insert_signal(
+        self,
+        *,
+        market_id: str,
+        market_title: str,
+        rule: str,
+        source: str,
+        article_url: Optional[str],
+        belief: float,
+        yes_price: float,
+        side: str,
+        cost_basis: float,
+        edge: float,
+        win_prob: float,
+        expected_roi: float,
+        kelly: float,
+        sharpe: float,
+        end_date: Optional[datetime],
+        horizon_days: Optional[float],
+    ) -> int:
+        """Record one fired signal; returns its id for the position to reference.
+
+        Written even when a position is already open on this market — the fact
+        that the filters fired is worth keeping either way, and separating intent
+        from exposure is why signals and paper_positions are two tables.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO signals
+                    (market_id, market_title, rule, source, article_url, belief,
+                     yes_price, side, cost_basis, edge, win_prob, expected_roi,
+                     kelly, sharpe, end_date, horizon_days)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (market_id, market_title, rule, source, article_url, belief,
+                 yes_price, side, cost_basis, edge, win_prob, expected_roi,
+                 kelly, sharpe, end_date, horizon_days),
+            )
+            return cur.fetchone()[0]
+
+    def open_position(
+        self,
+        *,
+        signal_id: int,
+        market_id: str,
+        side: str,
+        entry_price: float,
+        stake: float,
+    ) -> bool:
+        """Open a paper position. Returns False if this market already has one.
+
+        "Already open" is a normal outcome, not an error: the notification path
+        and the sweep can legitimately reach the same market, and the partial
+        unique index is what decides. Catching the violation here means the
+        database stays the single arbiter — no read-then-write race to lose.
+        """
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO paper_positions
+                        (signal_id, market_id, side, entry_price, stake, shares)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (signal_id, market_id, side, entry_price, stake,
+                     stake / entry_price),
+                )
+            return True
+        except psycopg.errors.UniqueViolation:
+            return False
+
+    def settle_positions(self) -> list[dict]:
+        """Book P&L on every open position whose market now has an outcome.
+
+        One statement, so a crash mid-sweep cannot half-settle the book. Our side
+        pays 1.0 per share if it won and 0.0 if it lost, hence
+        pnl = shares * exit_price - stake.
+
+        The CASE is repeated because SQL cannot reference a column it is assigning
+        in the same UPDATE. Markets with resolved_outcome NULL or 0.5 are skipped:
+        0.5 means the outcome was not determinable, the same rows
+        resolved_unscored_markets excludes, so the two ledgers agree on what
+        counts as resolved.
+        """
+        won = """
+            (p.side = 'YES' AND m.resolved_outcome = 1.0)
+         OR (p.side = 'NO'  AND m.resolved_outcome = 0.0)
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE paper_positions p
+                SET status      = 'settled',
+                    closed_at   = now(),
+                    exit_reason = 'resolved',
+                    exit_price  = CASE WHEN {won} THEN 1.0 ELSE 0.0 END,
+                    pnl         = p.shares * (CASE WHEN {won} THEN 1.0 ELSE 0.0 END)
+                                  - p.stake
+                FROM markets m
+                WHERE m.id = p.market_id
+                  AND p.status = 'open'
+                  AND m.resolved_outcome IS NOT NULL
+                  AND m.resolved_outcome != 0.5
+                RETURNING p.market_id, p.side, p.exit_price, p.pnl
+                """
+            )
+            return [
+                {"market_id": r[0], "side": r[1], "exit_price": r[2], "pnl": r[3]}
+                for r in cur.fetchall()
+            ]
+
+    def position_aggregates(self) -> dict:
+        """Book-wide totals for the gauges: counts, realised P&L, wins, stake.
+
+        Recomputed each sweep rather than tracked incrementally, so a restart or a
+        hand-edited row can never leave the gauges drifting from the table.
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT count(*) FILTER (WHERE status = 'open'),
+                       count(*) FILTER (WHERE status <> 'open'),
+                       coalesce(sum(pnl), 0.0),
+                       count(*) FILTER (WHERE status <> 'open' AND pnl > 0),
+                       coalesce(sum(stake) FILTER (WHERE status <> 'open'), 0.0)
+                FROM paper_positions
+                """
+            )
+            open_n, settled_n, pnl_total, wins, staked = cur.fetchone()
+            return {
+                "open": open_n,
+                "settled": settled_n,
+                "pnl_total": float(pnl_total),
+                "wins": wins,
+                "staked": float(staked),
             }
