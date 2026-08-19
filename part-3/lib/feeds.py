@@ -32,4 +32,12 @@ FEEDS: list[Feed] = [
     Feed("Guardian Politics", "https://www.theguardian.com/politics/rss", "politics"),
     Feed("ABC News Politics", "https://abcnews.go.com/abcnews/politicsheadlines", "politics"),
     Feed("Foreign Policy", "https://foreignpolicy.com/feed/", "politics"),
+    # Crypto
+    Feed("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/", "crypto"),
+    Feed("Cointelegraph", "https://cointelegraph.com/rss", "crypto"),
+    # Finance / business
+    Feed("BBC Business", "https://feeds.bbci.co.uk/news/business/rss.xml", "finance"),
+    Feed("CNBC Top News", "https://www.cnbc.com/id/100003114/device/rss/rss.html", "finance"),
+    # Sports
+    Feed("ESPN", "https://www.espn.com/espn/rss/news", "sports"),
 ]

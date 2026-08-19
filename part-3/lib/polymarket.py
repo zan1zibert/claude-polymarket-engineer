@@ -104,12 +104,13 @@ def fetch_markets(
     client: httpx.Client,
     window_days: int,
     limit: int,
-    tag_id: int,
+    tag_id: int | None,
     url: str = GAMMA_MARKETS_URL
 ) -> list[dict]:
     """Active, open binary markets resolving within `window_days`, normalized.
 
     Ordered by 24h volume desc so the `limit` we take is the most liquid slice.
+    `tag_id=None` fetches across all categories.
     """
     now = datetime.now(timezone.utc)
     params = {
@@ -117,12 +118,13 @@ def fetch_markets(
         "closed": "false",
         "archived": "false",
         "limit": limit,
-        "tag_id": tag_id,
         "order": "volume24hr",
         "ascending": "false",
         "end_date_min": now.isoformat(),
         "end_date_max": (now + timedelta(days=window_days)).isoformat(),
     }
+    if tag_id is not None:
+        params["tag_id"] = tag_id
     resp = client.get(url, params=params)
     resp.raise_for_status()
     return [n for m in resp.json() if (n := normalize(m)) is not None]
