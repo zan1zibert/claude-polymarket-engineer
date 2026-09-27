@@ -110,23 +110,6 @@ services:
     deploy:
       replicas: 1
 
-  scorer:        # SINGLETON: grades resolved markets (closes the loop)
-    build:
-      context: .
-      target: scorer
-    environment:
-      DATABASE_URL: postgresql://pm:pm@postgres:5432/pm
-      SCORER_INTERVAL_SECONDS: ${SCORER_INTERVAL_SECONDS}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    restart: unless-stopped
-    # SINGLETON — scoring is idempotent, so a second instance just duplicates work.
-    deploy:
-      replicas: 1
-
   signal:        # SINGLETON: mutates positions, do not scale
     build:
       context: .
@@ -154,7 +137,7 @@ services:
     deploy:
       replicas: 1
 
-  prometheus:    # scrapes /metrics from feeder/worker/syncer/scorer/signal over the internal network
+  prometheus:    # scrapes /metrics from feeder/worker/syncer/signal over the internal network
     image: prom/prometheus:latest
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -169,7 +152,6 @@ services:
       - feeder
       - worker
       - syncer
-      - scorer
       - signal
     restart: unless-stopped
 

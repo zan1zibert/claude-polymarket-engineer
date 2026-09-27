@@ -1,8 +1,7 @@
 """Integration tests for the signal service's schema + DB access.
 
 The partial unique index and the settlement UPDATE are real SQL, so they are
-tested against a live Postgres rather than mocked. Point a test DB at it (same
-convention as tests/test_scorer_db.py):
+tested against a live Postgres rather than mocked. Point a test DB at it:
 
     TEST_DATABASE_URL=postgresql://pm:pm@localhost:5432/pm pytest tests/test_signals_db.py
 
@@ -324,7 +323,7 @@ def test_settlement_pnl_for_every_outcome(side, outcome, expected_exit, expected
 
 
 def test_settlement_skips_markets_without_a_known_outcome():
-    """Closed but resolved_outcome NULL -> stays open, mirroring forecast_scores."""
+    """Closed but resolved_outcome NULL -> stays open."""
     mid = "utest_gB"
     _seed_market(mid, closed=True, resolved_outcome=None)
     _seed_position(mid, _seed_signal(mid))
@@ -333,7 +332,7 @@ def test_settlement_skips_markets_without_a_known_outcome():
 
 
 def test_settlement_skips_an_ambiguous_half_outcome():
-    """resolved_outcome = 0.5 means undetermined; the scorer excludes it too."""
+    """resolved_outcome = 0.5 means undetermined."""
     mid = "utest_gC"
     _seed_market(mid, closed=True, resolved_outcome=0.5)
     _seed_position(mid, _seed_signal(mid))

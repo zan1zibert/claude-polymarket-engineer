@@ -1,9 +1,8 @@
 """Signal — the service that turns beliefs into (paper) bets.
 
-The scorer closed the forecasting loop: it grades our belief against the outcome.
-This closes the trading loop. The worker is deliberately price-blind — the score
-it maintains is our own prior, never anchored to Polymarket — so this is the only
-service that ever sees a live price, and the only one that commits to a position.
+The worker is deliberately price-blind — the score it maintains is our own
+prior, never anchored to Polymarket — so this is the only service that ever
+sees a live price, and the only one that commits to a position.
 
   1. Take a market, read our belief from markets.current_score.
   2. Fetch the live YES price from Gamma.
@@ -28,10 +27,10 @@ Both paths read the belief from Postgres, never from the Redis payload — with
 repeat notifications collapsing into one set member, a payload's score could be
 several updates stale by the time it is popped.
 
-Singleton, and deliberately a near-clone of the scorer (periodic loop, --once
-flag, metrics server, graceful shutdown). It mutates positions, so a second
-instance would be racing over the same book; the partial unique index on
-paper_positions would stop the worst of it, but there is nothing to gain.
+Singleton, and deliberately shaped like the other singleton services (periodic
+loop, --once flag, metrics server, graceful shutdown). It mutates positions, so
+a second instance would be racing over the same book; the partial unique index
+on paper_positions would stop the worst of it, but there is nothing to gain.
 
 Everything here is PAPER. No order is placed anywhere.
 

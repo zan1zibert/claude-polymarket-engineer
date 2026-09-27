@@ -137,13 +137,13 @@ SYNCER_PRICES_RECORDED = Counter(
     "syncer_prices_recorded_total", "Price-series observations written (changed prices only)"
 )
 # Corpus state — gauges the syncer OVERWRITES each cycle from a COUNT (a level,
-# not a rate), mirroring the scorer's forecast_* gauges. These answer "how big is
-# the live market set right now", which the syncer_*_total counters (flows) can't.
+# not a rate). These answer "how big is the live market set right now", which
+# the syncer_*_total counters (flows) can't.
 SYNCER_OPEN_MARKETS = Gauge(
     "syncer_open_markets", "Markets currently open (NOT closed) — the retrieval corpus"
 )
 SYNCER_CLOSED_MARKETS = Gauge(
-    "syncer_closed_markets", "Markets marked resolved/closed (retained for scoring)"
+    "syncer_closed_markets", "Markets marked resolved/closed (retained for history)"
 )
 SYNCER_AWAITING_OUTCOME = Gauge(
     "syncer_awaiting_outcome",
@@ -158,42 +158,6 @@ SYNCER_AWAITING_OUTCOME = Gauge(
 SYNCER_LAST_SYNC_TIMESTAMP = Gauge(
     "syncer_last_sync_timestamp_seconds", "Unix time of the last completed sync cycle"
 )
-
-# --- scorer ---
-# One monotonic counter for the event (markets graded), and a set of gauges that
-# the scorer OVERWRITES each cycle from aggregate SQL. Gauges (not counters)
-# because these are a snapshot of the whole scored corpus — a mean, not a rate.
-SCORER_MARKETS_SCORED = Counter(
-    "scorer_markets_scored_total", "Resolved markets graded and written to forecast_scores"
-)
-FORECAST_BRIER_MEAN = Gauge(
-    "forecast_brier_mean", "Mean Brier score of our belief over all scored markets"
-)
-FORECAST_LOGLOSS_MEAN = Gauge(
-    "forecast_logloss_mean", "Mean log loss of our belief over all scored markets"
-)
-FORECAST_BRIER_BASELINE_MEAN = Gauge(
-    "forecast_brier_baseline_mean", "Mean Brier score of the market-at-ingest baseline"
-)
-FORECAST_LOGLOSS_BASELINE_MEAN = Gauge(
-    "forecast_logloss_baseline_mean", "Mean log loss of the market-at-ingest baseline"
-)
-FORECAST_BRIER_SKILL = Gauge(
-    "forecast_brier_skill",
-    "Brier skill vs the market baseline (1 - belief/baseline; >0 = beating the market)",
-)
-FORECAST_SCORED_MARKETS = Gauge(
-    "forecast_scored_markets", "Total markets graded so far (rows in forecast_scores)"
-)
-# Unix timestamp of the last completed scorer cycle, whether or not it graded
-# any markets — scorer_markets_scored_total's rate is near-zero most of the
-# time by design (markets resolve every few days, not every cycle), so it
-# can't tell a hung scorer from a quiet one. Panel it as `time() - metric` to
-# get a staleness gauge, same pattern as SYNCER_LAST_SYNC_TIMESTAMP above.
-SCORER_LAST_RUN_TIMESTAMP = Gauge(
-    "scorer_last_run_timestamp_seconds", "Unix time of the last completed scorer cycle"
-)
-
 
 # --- signal (belief vs live price -> paper positions) ---
 SIGNAL_EVALUATED = Counter(

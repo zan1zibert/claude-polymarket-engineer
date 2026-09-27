@@ -404,7 +404,7 @@
     {
       "id": 18,
       "title": "Awaiting outcome",
-      "description": "Closed markets with no resolved_outcome — resolved but ungradeable, the scorer's dead-letter set. Nothing backfills it, so sustained growth is a signal (Gamma stopped returning determinable outcomes), not a transient.",
+      "description": "Closed markets with no resolved_outcome — resolved but the outcome was never determinable. Nothing backfills it, so sustained growth is a signal (Gamma stopped returning determinable outcomes), not a transient.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 6, "x": 12, "y": 53 },
@@ -428,7 +428,7 @@
     {
       "id": 19,
       "title": "Closed markets",
-      "description": "Resolved markets, retained for scoring (never deleted). Grows monotonically over the corpus lifetime.",
+      "description": "Resolved markets, retained for history (never deleted). Grows monotonically over the corpus lifetime.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 6, "x": 18, "y": 53 },
@@ -474,56 +474,12 @@
       ]
     },
     {
-      "id": 22,
-      "title": "Scorer",
-      "type": "row",
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 69 },
-      "panels": []
-    },
-    {
-      "id": 23,
-      "title": "Time since last scorer run",
-      "description": "Staleness = now - last completed scorer cycle. scorer_markets_scored_total's rate is near-zero most of the time by design (markets resolve every few days, not every cycle), so it can't tell a hung scorer from a quiet one — this panel is the one that can. Thresholds assume the hourly (3600s) default — retune to your SCORER_INTERVAL_SECONDS (yellow ≈ 1 missed cycle, red ≈ 2).",
-      "type": "stat",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 70 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 7200 },
-              { "color": "red", "value": 10800 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "time() - max(scorer_last_run_timestamp_seconds)",
-          "legendFormat": "staleness"
-        }
-      ]
-    },
-    {
       "id": 25,
       "title": "Claude stop_reason breakdown",
       "description": "Response finish reason per Claude re-eval call. Watch max_tokens — it means the response was truncated mid-generation, not a clean finish.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 78 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 69 },
       "fieldConfig": {
         "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
         "overrides": []
@@ -539,7 +495,7 @@
       "description": "Re-eval calls that ended on stop_reason=max_tokens — the response was cut off before the model finished. Sustained non-zero means max_tokens is set too low for this prompt/model.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 78 },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 69 },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -561,7 +517,7 @@
       "description": "Groq API calls by outcome — HTTP status code on failure, 200 on success. Watch 429 here for rate-limit pressure on the relevance check.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 86 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 77 },
       "fieldConfig": {
         "defaults": { "unit": "cps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
         "overrides": []
@@ -577,7 +533,7 @@
       "description": "Rate-limit responses from the Groq relevance check. Sustained non-zero means candidates are being dropped as groq_error and worker_groq_failures_total is climbing — consider backing off request rate or upgrading the Groq tier.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 86 },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 77 },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
