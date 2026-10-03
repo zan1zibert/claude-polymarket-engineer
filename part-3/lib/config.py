@@ -27,7 +27,8 @@ class Settings:
     voyage_model: str
     embedding_dim: int
     top_k: int                   # candidate markets retrieved per article
-    groq_model: str               # model used for the per-candidate relevance check
+    jev_model: str               # TypeSafe model for the relevance check (one request per article)
+    jev_relevance_threshold: float  # min P(same event) for a candidate to reach Claude
     audit_log_path: str          # append-only JSONL of every belief update
     worker_use_web_search: bool  # worker already has the article; off by default
     belief_move_epsilon: float   # min |new-prev| score move to count a re-eval as "moving" the belief
@@ -89,7 +90,8 @@ def load_settings() -> Settings:
         voyage_model=os.environ.get("VOYAGE_MODEL", "voyage-3.5"),
         embedding_dim=int(os.environ.get("EMBEDDING_DIM", "1024")),
         top_k=int(os.environ.get("TOP_K", "10")),
-        groq_model=os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant"),
+        jev_model=os.environ.get("JEV_MODEL", "jev-latest"),
+        jev_relevance_threshold=float(os.environ.get("JEV_RELEVANCE_THRESHOLD", "0.7")),
         audit_log_path=os.environ.get("AUDIT_LOG_PATH", "outputs/belief_updates.jsonl"),
         worker_use_web_search=os.environ.get("WORKER_USE_WEB_SEARCH", "false").lower()
         in ("1", "true", "yes"),

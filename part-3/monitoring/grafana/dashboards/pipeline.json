@@ -66,7 +66,7 @@
     {
       "id": 2,
       "title": "Article match rate",
-      "description": "Fraction of processed articles that found at least one market that passed the Groq relevance check. Low = relevance-bound (the bottleneck we discussed).",
+      "description": "Fraction of processed articles that found at least one market that passed the Jev relevance check. Low = relevance-bound (the bottleneck we discussed).",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 9, "w": 8, "x": 16, "y": 0 },
@@ -111,8 +111,8 @@
     },
     {
       "id": 24,
-      "title": "Groq tokens/sec",
-      "description": "Input vs output token throughput for the Groq relevance check — cost and rate-limit pressure.",
+      "title": "Jev tokens/sec",
+      "description": "Input vs output token throughput for the Jev relevance check (one request per article, covering all its candidate markets) — cost and rate-limit pressure.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 6, "x": 12, "y": 9 },
@@ -122,7 +122,7 @@
       },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (type) (rate(groq_tokens_total[5m]))", "legendFormat": "{{type}}" }
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (type) (rate(jev_tokens_total[5m]))", "legendFormat": "{{type}}" }
       ]
     },
     {
@@ -513,8 +513,8 @@
     },
     {
       "id": 27,
-      "title": "Groq relevance-check outcomes",
-      "description": "Groq API calls by outcome — HTTP status code on failure, 200 on success. Watch 429 here for rate-limit pressure on the relevance check.",
+      "title": "Jev relevance-check outcomes",
+      "description": "Jev requests (one per article) by outcome — HTTP status code on API failure, 'connection' when no response arrived, 'client' for SDK/config errors such as a missing TYPESAFE_API_KEY, 200 on success. The SDK retries 429/5xx itself, so a code here means retries were exhausted.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 77 },
@@ -524,13 +524,13 @@
       },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (code) (rate(groq_http_status_total[30m]))", "legendFormat": "{{code}}" }
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (code) (rate(jev_http_status_total[30m]))", "legendFormat": "{{code}}" }
       ]
     },
     {
       "id": 28,
-      "title": "Groq 429s / hr",
-      "description": "Rate-limit responses from the Groq relevance check. Sustained non-zero means candidates are being dropped as groq_error and worker_groq_failures_total is climbing — consider backing off request rate or upgrading the Groq tier.",
+      "title": "Jev 429s / hr",
+      "description": "Rate-limited Jev requests that still failed after the SDK's retries. Sustained non-zero means whole articles are being dropped as jev_error and worker_relevance_failures_total is climbing.",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 6, "x": 12, "y": 77 },
@@ -546,7 +546,24 @@
       },
       "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [
-        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(groq_http_status_total{code=\"429\"}[30m])) * 3600", "legendFormat": "429/hr" }
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(jev_http_status_total{code=\"429\"}[30m])) * 3600", "legendFormat": "429/hr" }
+      ]
+    },
+    {
+      "id": 29,
+      "title": "Jev request latency",
+      "description": "p50 / p95 wall-clock time of one Jev relevance request — all of an article's candidate markets judged together, SDK retries included.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 77 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.5, sum by (le) (rate(jev_request_duration_seconds_bucket[30m])))", "legendFormat": "p50" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le) (rate(jev_request_duration_seconds_bucket[30m])))", "legendFormat": "p95" }
       ]
     }
   ]

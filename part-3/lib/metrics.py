@@ -50,11 +50,11 @@ WORKER_ARTICLES_PROCESSED = Counter(
 )
 WORKER_ARTICLES_SKIPPED = Counter(
     "worker_articles_skipped_total",
-    "Articles with no top_k_markets candidates, or none that passed the Groq relevance check",
+    "Articles with no top_k_markets candidates, or none that passed the Jev relevance check",
     ["source"],
 )
 WORKER_MARKETS_MATCHED = Counter(
-    "worker_markets_matched_total", "Markets that passed the Groq relevance check",
+    "worker_markets_matched_total", "Markets that passed the Jev relevance check",
     ["source"],
 )
 WORKER_MARKETS_REEVALUATED = Counter(
@@ -75,20 +75,20 @@ WORKER_BELIEF_MOVED = Counter(
     "(the signal, as opposed to re-evals that left the score flat)",
     ["source"],
 )
-WORKER_GROQ_RELEVANT = Counter(
-    "worker_groq_relevant_total",
-    "Candidates the Groq relevance check accepted (proceeded to Claude)",
+WORKER_RELEVANCE_ACCEPTED = Counter(
+    "worker_relevance_accepted_total",
+    "Candidates the Jev relevance check accepted (proceeded to Claude)",
     ["source"],
 )
-WORKER_GROQ_REJECTED = Counter(
-    "worker_groq_rejected_total",
-    "Candidates the Groq relevance check rejected as not relevant",
+WORKER_RELEVANCE_REJECTED = Counter(
+    "worker_relevance_rejected_total",
+    "Candidates the Jev relevance check scored below jev_relevance_threshold",
     ["source"],
 )
-WORKER_GROQ_FAILURES = Counter(
-    "worker_groq_failures_total",
-    "Candidates dropped because the Groq relevance check errored or failed to parse "
-    "(counted separately from worker_groq_rejected_total so outages are visible)",
+WORKER_RELEVANCE_FAILURES = Counter(
+    "worker_relevance_failures_total",
+    "Candidates dropped because their article's Jev request failed — one failed request "
+    "counts every candidate it carried (kept apart from rejections so outages are visible)",
     ["source"],
 )
 CLAUDE_REEVAL_DURATION = Histogram(
@@ -102,21 +102,27 @@ CLAUDE_STOP_REASON = Counter(
 )
 
 # --- shared external-API token usage ---
-# `type` = input|output for Claude and Groq; `operation` = query|document for Voyage.
+# `type` = input|output for Claude and Jev; `operation` = query|document for Voyage.
 CLAUDE_TOKENS = Counter(
     "claude_tokens_total", "Claude tokens consumed", ["type"]
 )
-GROQ_TOKENS = Counter(
-    "groq_tokens_total", "Groq tokens consumed", ["type"]
+JEV_TOKENS = Counter(
+    "jev_tokens_total", "Jev (TypeSafe System One) tokens consumed", ["type"]
 )
 VOYAGE_EMBEDDING_TOKENS = Counter(
     "voyage_embedding_tokens_total", "Voyage embedding tokens consumed", ["operation"]
 )
-GROQ_HTTP_STATUS = Counter(
-    "groq_http_status_total",
-    "Groq relevance-check calls by outcome — HTTP status code on failure, "
-    "'200' on success (the client doesn't hand back a code for a clean response)",
+JEV_HTTP_STATUS = Counter(
+    "jev_http_status_total",
+    "Jev relevance requests (one per article) by outcome — HTTP status code on API "
+    "failure, 'connection' when no response arrived, '200' on success",
     ["code"],
+)
+JEV_REQUEST_DURATION = Histogram(
+    "jev_request_duration_seconds",
+    "Wall-clock duration of one Jev relevance request (all of an article's candidates, "
+    "SDK retries included)",
+    buckets=(0.05, 0.1, 0.15, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 10.0, 30.0),
 )
 
 # --- syncer ---

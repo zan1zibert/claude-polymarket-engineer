@@ -2,8 +2,9 @@
 
 For each article on the news queue:
   1. Embed it (Voyage).
-  2. Retrieve the top-k nearest markets from pgvector, dropping anything beyond
-     the relevance gate (an off-topic article matches nothing and is skipped).
+  2. Retrieve the top-k nearest markets from pgvector, then keep only those Jev
+     judges to be about the same event — one request per article (an off-topic
+     article matches nothing and is skipped).
   3. For each matched market, ask Claude — price-blind — to update our prior in
      light of the news.
   4. Atomically swap the stored score and append a belief_updates row.
@@ -32,10 +33,10 @@ from lib.claude import reevaluate
 from lib.config import Settings, load_settings
 from lib.db import Db
 from lib.embeddings import Embedder
-from lib.groq_relevance import check_relevance
+from lib.jev_relevance import check_relevance
 from lib import metrics
 from lib.queue import DirtyMarkets, NewsQueue
-from lib.schemas import Article, BeliefUpdate
+from lib.schemas import Article, BeliefUpdate, Market
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,6 +66,52 @@ def _audit(path: str, update: BeliefUpdate) -> None:
         f.write(update.to_json() + "\n")
 
 
+def _relevant_markets(
+    article: Article, candidates: list[Market], db: Db, settings: Settings,
+) -> list[Market]:
+    """One Jev request for all candidates; keep those at or above the threshold.
+
+    Every candidate gets a relevance_checks row. A failed request fails closed:
+    each candidate is logged as not relevant with the error as its reasoning.
+    """
+    if not candidates:
+        return []
+    src = article.source
+    verdict = check_relevance(
+        {"title": article.title, "summary": article.summary},
+        [{"question": c.question, "description": c.description} for c in candidates],
+        model=settings.jev_model,
+    )
+
+    if "error" in verdict:
+        metrics.WORKER_RELEVANCE_FAILURES.labels(source=src).inc(len(candidates))
+        log.warning("relevance check failed for %r: %s", article.title, verdict["error"])
+        for candidate in candidates:
+            db.log_relevance_check(
+                article.url, article.title, candidate.id, False,
+                f"jev_error: {verdict['error']}", settings.jev_model, probability=None,
+            )
+        return []
+
+    relevant_markets = []
+    for candidate, probability in zip(candidates, verdict["probabilities"]):
+        relevant = probability >= settings.jev_relevance_threshold
+        log.info(
+            "article %r vs market %r: p(same event)=%.2f relevant=%s",
+            article.title, candidate.question, probability, relevant,
+        )
+        db.log_relevance_check(
+            article.url, article.title, candidate.id, relevant, "", verdict["model"],
+            probability=probability,
+        )
+        if relevant:
+            metrics.WORKER_RELEVANCE_ACCEPTED.labels(source=src).inc()
+            relevant_markets.append(candidate)
+        else:
+            metrics.WORKER_RELEVANCE_REJECTED.labels(source=src).inc()
+    return relevant_markets
+
+
 def process_article(
     article: Article,
     db: Db,
@@ -78,32 +125,7 @@ def process_article(
     candidates = db.top_k_markets(embedding, settings.top_k)
 
     article_payload = {"title": article.title, "summary": article.summary, "url": article.url}
-
-    markets = []
-    for candidate in candidates:
-        market_payload = {"question": candidate.question, "description": candidate.description}
-        verdict = check_relevance(article_payload, market_payload, model=settings.groq_model)
-
-        if "error" in verdict:
-            metrics.WORKER_GROQ_FAILURES.labels(source=src).inc()
-            db.log_relevance_check(
-                article.url, article.title, candidate.id, False,
-                f"groq_error: {verdict['error']}", settings.groq_model,
-            )
-            continue
-
-        relevant = bool(verdict.get("relevant"))
-        reasoning = verdict.get("reasoning", "")
-        log.info("Article: %r for market: %r, relevant: %s, reasoning: %r", article.title, candidate.question, relevant, reasoning)
-
-        db.log_relevance_check(
-            article.url, article.title, candidate.id, relevant, reasoning, settings.groq_model,
-        )
-        if relevant:
-            metrics.WORKER_GROQ_RELEVANT.labels(source=src).inc()
-            markets.append(candidate)
-        else:
-            metrics.WORKER_GROQ_REJECTED.labels(source=src).inc()
+    markets = _relevant_markets(article, candidates, db, settings)
 
     if not markets:
         metrics.WORKER_ARTICLES_SKIPPED.labels(source=src).inc()
@@ -176,11 +198,12 @@ def run() -> None:
         signal.signal(sig, lambda *_: stop.__setitem__("flag", True))
 
     log.info(
-        "worker started: model=%s max_tokens=%d top_k=%d groq_model=%s",
+        "worker started: model=%s max_tokens=%d top_k=%d jev_model=%s jev_threshold=%.2f",
         settings.anthropic_model,
         settings.anthropic_max_tokens,
         settings.top_k,
-        settings.groq_model,
+        settings.jev_model,
+        settings.jev_relevance_threshold,
     )
 
     while not stop["flag"]:

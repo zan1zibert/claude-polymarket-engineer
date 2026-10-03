@@ -1,9 +1,0 @@
-Prediction market:
-
-Question: {question}
-Description: {description}
-
-News article:
-
-Title: {article_title}
-Summary: {article_summary}
