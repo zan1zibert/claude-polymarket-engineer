@@ -49,7 +49,8 @@ services:
       # override the base pm:pm DSN with the real password from .env
       DATABASE_URL: postgresql://pm:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/pm
       TOP_K: ${TOP_K:?set TOP_K in .env}
-      GROQ_MODEL: ${GROQ_MODEL:?set GROQ_MODEL in .env}
+      JEV_MODEL: ${JEV_MODEL:?set JEV_MODEL in .env}
+      JEV_RELEVANCE_THRESHOLD: ${JEV_RELEVANCE_THRESHOLD:?set JEV_RELEVANCE_THRESHOLD in .env}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:?set ANTHROPIC_MODEL in .env}
       ANTHROPIC_MAX_TOKENS: ${ANTHROPIC_MAX_TOKENS:?set ANTHROPIC_MAX_TOKENS in .env}
 

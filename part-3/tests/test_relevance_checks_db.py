@@ -53,7 +53,7 @@ def db(_schema):
     with psycopg.connect(TEST_DATABASE_URL, autocommit=True) as c, c.cursor() as cur:
         # A (index 0) sits at distance 0 from the query; B (index 1) is
         # orthogonal to it — cosine distance 1.0, well beyond the old 0.35
-        # threshold. Both must still come back once filtering is Groq's job.
+        # threshold. Both must still come back: filtering is the relevance model's job.
         cur.execute(
             "INSERT INTO markets (id, question, embedding) VALUES (%s, %s, %s)",
             (_MARKET_IDS[0], "question A", _unit_vector(0)),
@@ -83,25 +83,34 @@ def test_top_k_markets_respects_k(db):
     assert results[0].id == _MARKET_IDS[0]  # the exact match, nearest by distance
 
 
-def test_log_relevance_check_inserts_a_row(db):
-    db.log_relevance_check(
-        article_url="https://example.com/a",
-        article_title="Some Article",
-        market_id=_MARKET_IDS[0],
-        relevant=True,
-        reasoning="same event",
-        model="llama-3.1-8b-instant",
-    )
-
+def _rows(market_id):
     with psycopg.connect(TEST_DATABASE_URL, autocommit=True) as c, c.cursor() as cur:
         cur.execute(
-            "SELECT article_url, article_title, market_id, relevant, reasoning, model "
+            "SELECT article_url, article_title, market_id, relevant, reasoning, model, probability "
             "FROM relevance_checks WHERE market_id = %s",
-            (_MARKET_IDS[0],),
+            (market_id,),
         )
-        row = cur.fetchone()
+        return cur.fetchall()
 
-    assert row == (
-        "https://example.com/a", "Some Article", _MARKET_IDS[0], True, "same event",
-        "llama-3.1-8b-instant",
+
+def test_log_relevance_check_inserts_a_row_with_probability(db):
+    db.log_relevance_check(
+        "https://example.com/a", "Some Article", _MARKET_IDS[0], True, "", "jev-1.13.0",
+        probability=0.87,
     )
+
+    assert _rows(_MARKET_IDS[0]) == [
+        ("https://example.com/a", "Some Article", _MARKET_IDS[0], True, "", "jev-1.13.0", 0.87),
+    ]
+
+
+def test_log_relevance_check_defaults_probability_to_null(db):
+    db.log_relevance_check(
+        "https://example.com/a", "Some Article", _MARKET_IDS[1], False,
+        "jev_error: TypeSafe API error: 429", "jev-latest",
+    )
+
+    assert _rows(_MARKET_IDS[1]) == [
+        ("https://example.com/a", "Some Article", _MARKET_IDS[1], False,
+         "jev_error: TypeSafe API error: 429", "jev-latest", None),
+    ]

@@ -3,7 +3,7 @@
 Operations the worker needs:
   - top_k_markets   : nearest markets to an article embedding (read-only)
   - apply_belief_update : atomically swap a market's score and log the transition
-  - log_relevance_check : record a Groq relevance verdict for one candidate
+  - log_relevance_check : record a Jev relevance verdict for one candidate
 
 Operations the market-syncer needs (services/syncer/):
   - existing_market_ids     : which of these ids do we already store?
@@ -58,7 +58,7 @@ class Db:
         cosine distance (0 = identical, 2 = opposite); we order by it and take
         the k closest open markets. The caller (worker) is responsible for
         deciding which of these candidates are actually relevant (see
-        lib/groq_relevance.check_relevance) — a distance cutoff can't tell two
+        lib/jev_relevance.check_relevance) — a distance cutoff can't tell two
         different events discussed with overlapping vocabulary apart.
         """
         with self._conn.cursor() as cur:
@@ -131,22 +131,25 @@ class Db:
         relevant: bool,
         reasoning: str,
         model: str,
+        *,
+        probability: float | None = None,
     ) -> None:
-        """Persist one Groq relevance verdict for a (article, market) candidate.
+        """Persist one relevance verdict for a (article, market) candidate.
 
         Called once per top_k_markets candidate, regardless of verdict —
-        accepted, rejected, or a Groq failure (relevant=False with a
-        "groq_error: ..." reasoning) — so the filter's precision can be
-        reviewed from real data instead of guessed at.
+        accepted, rejected, or a request failure (relevant=False, probability
+        NULL, "jev_error: ..." reasoning) — so the filter's precision can be
+        reviewed from real data instead of guessed at. Jev returns no
+        explanation, so `reasoning` is empty unless the check failed.
         """
         with self._conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO relevance_checks
-                    (article_url, article_title, market_id, relevant, reasoning, model)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                    (article_url, article_title, market_id, relevant, reasoning, model, probability)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (article_url, article_title, market_id, relevant, reasoning, model),
+                (article_url, article_title, market_id, relevant, reasoning, model, probability),
             )
 
     # ----------------------------------------------------------------- syncer
