@@ -565,6 +565,50 @@
         { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.5, sum by (le) (rate(jev_request_duration_seconds_bucket[30m])))", "legendFormat": "p50" },
         { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le) (rate(jev_request_duration_seconds_bucket[30m])))", "legendFormat": "p95" }
       ]
+    },
+    {
+      "id": 30,
+      "title": "Jev relevance verdicts / hr",
+      "description": "Candidate markets per hour, by Jev verdict: relevant (P(same event) >= JEV_RELEVANCE_THRESHOLD, sent to Claude), not relevant (below it), and failed (the article's Jev request errored, so every candidate it carried was dropped). Counted per candidate, not per article.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 85 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "showPoints": "never", "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "relevant" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "not relevant" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "failed" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last", "mean"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_relevance_accepted_total[$window])) * 3600", "legendFormat": "relevant" },
+        { "refId": "B", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_relevance_rejected_total[$window])) * 3600", "legendFormat": "not relevant" },
+        { "refId": "C", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_relevance_failures_total[$window])) * 3600", "legendFormat": "failed" }
+      ]
+    },
+    {
+      "id": 31,
+      "title": "Jev relevant ratio",
+      "description": "Share of judged candidates Jev marked relevant: relevant / (relevant + not relevant) over $window. Failed requests are excluded, so outages don't skew it. A ratio that jumps when JEV_RELEVANCE_THRESHOLD changes shows how sensitive the filter is to the threshold.",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 85 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(worker_relevance_accepted_total[$window])) / clamp_min(sum(rate(worker_relevance_accepted_total[$window])) + sum(rate(worker_relevance_rejected_total[$window])), 1e-9)", "legendFormat": "relevant ratio" }
+      ]
     }
   ]
 }
